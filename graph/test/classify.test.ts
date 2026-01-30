@@ -211,9 +211,7 @@ describe("classifyFiles", () => {
     expect(result.classifications).toHaveLength(4);
     expect(result.unclassified).toHaveLength(0);
 
-    const byFile = new Map(
-      result.classifications.map((c) => [path.relative(tmpDir, c.file), c]),
-    );
+    const byFile = new Map(result.classifications.map((c) => [path.relative(tmpDir, c.file), c]));
 
     expect(byFile.get("src/components/Button.tsx")!.group).toBe("UI Components");
     expect(byFile.get("src/routes/users.ts")!.group).toBe("API Routes");
@@ -238,9 +236,7 @@ describe("classifyFiles", () => {
   test("overrides take priority over heuristics", () => {
     const configWithOverride: GroupConfig = {
       ...CONFIG,
-      overrides: [
-        { pattern: "src/components/**", group: "Business Logic" },
-      ],
+      overrides: [{ pattern: "src/components/**", group: "Business Logic" }],
     };
 
     const files = filePaths("src/components/Button.tsx");
@@ -294,10 +290,7 @@ describe("classifyFiles", () => {
     expect(result.classifications[0].strategy).toBe("heuristic");
 
     // Restore original content
-    fs.writeFileSync(
-      btnPath,
-      "export function Button() { return <button />; }",
-    );
+    fs.writeFileSync(btnPath, "export function Button() { return <button />; }");
   });
 
   test("each file is assigned to exactly one group", () => {

@@ -58,9 +58,7 @@ export function parseGroupConfig(yaml: string): GroupConfig {
     if (!Array.isArray(overrides)) {
       throw new Error('"overrides" must be an array');
     }
-    parsed.overrides = overrides.map((o, i) =>
-      validateGroupOverride(o, i, names),
-    );
+    parsed.overrides = overrides.map((o, i) => validateGroupOverride(o, i, names));
   }
 
   return parsed;
@@ -101,9 +99,7 @@ function validateGroupOverride(
 
   const group = obj.group.trim();
   if (!validGroups.has(group)) {
-    throw new Error(
-      `overrides[${index}].group "${group}" does not match any defined group`,
-    );
+    throw new Error(`overrides[${index}].group "${group}" does not match any defined group`);
   }
 
   return { pattern: obj.pattern.trim(), group };

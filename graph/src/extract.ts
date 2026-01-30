@@ -11,19 +11,12 @@ import type { FileEdge } from "./types.ts";
 export function extractFileGraph(tsconfigPath: string): FileEdge[] {
   const configFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
   if (configFile.error) {
-    const msg = ts.flattenDiagnosticMessageText(
-      configFile.error.messageText,
-      "\n",
-    );
+    const msg = ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n");
     throw new Error(`Failed to read tsconfig: ${msg}`);
   }
 
   const basePath = path.dirname(path.resolve(tsconfigPath));
-  const parsed = ts.parseJsonConfigFileContent(
-    configFile.config,
-    ts.sys,
-    basePath,
-  );
+  const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, basePath);
   if (parsed.errors.length > 0) {
     const msg = parsed.errors
       .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))
@@ -67,10 +60,7 @@ function collectImports(
       handleExportDeclaration(node, fromPath, program, edges);
     }
     // Dynamic import(): const m = import("./bar")
-    else if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
-    ) {
+    else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       handleDynamicImport(node, fromPath, sourceFile, program, edges);
     }
 
@@ -97,11 +87,7 @@ function handleImportDeclaration(
   if (!ts.isStringLiteral(node.moduleSpecifier)) return;
 
   const specifier = node.moduleSpecifier.text;
-  const resolved = resolveModuleSpecifier(
-    specifier,
-    fromPath,
-    program.getCompilerOptions(),
-  );
+  const resolved = resolveModuleSpecifier(specifier, fromPath, program.getCompilerOptions());
   if (!resolved) return;
 
   const symbols: string[] = [];
@@ -147,15 +133,10 @@ function handleExportDeclaration(
   program: ts.Program,
   edges: FileEdge[],
 ): void {
-  if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier))
-    return;
+  if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) return;
 
   const specifier = node.moduleSpecifier.text;
-  const resolved = resolveModuleSpecifier(
-    specifier,
-    fromPath,
-    program.getCompilerOptions(),
-  );
+  const resolved = resolveModuleSpecifier(specifier, fromPath, program.getCompilerOptions());
   if (!resolved) return;
 
   const symbols: string[] = [];
@@ -194,11 +175,7 @@ function handleDynamicImport(
   if (!arg || !ts.isStringLiteral(arg)) return;
 
   const specifier = arg.text;
-  const resolved = resolveModuleSpecifier(
-    specifier,
-    fromPath,
-    program.getCompilerOptions(),
-  );
+  const resolved = resolveModuleSpecifier(specifier, fromPath, program.getCompilerOptions());
   if (!resolved) return;
 
   // Dynamic imports don't have a static symbol list at the import site.
@@ -218,12 +195,7 @@ function resolveModuleSpecifier(
   containingFile: string,
   options: ts.CompilerOptions,
 ): string | null {
-  const result = ts.resolveModuleName(
-    specifier,
-    containingFile,
-    options,
-    ts.sys,
-  );
+  const result = ts.resolveModuleName(specifier, containingFile, options, ts.sys);
 
   const resolved = result.resolvedModule;
   if (!resolved) return null;

@@ -34,9 +34,9 @@ Use the TypeScript Compiler API (`ts.createProgram`) or `ts-morph` to:
 
 ```ts
 interface FileEdge {
-  from: string;       // absolute path of importing file
-  to: string;         // absolute path of imported file
-  symbols: string[];  // named imports (e.g. ["createUser", "UserSchema"])
+  from: string; // absolute path of importing file
+  to: string; // absolute path of imported file
+  symbols: string[]; // named imports (e.g. ["createUser", "UserSchema"])
 }
 ```
 
@@ -103,10 +103,10 @@ Intra-group edges are dropped — they are internal implementation detail.
 
 ```ts
 interface GroupEdge {
-  from: string;        // group name
-  to: string;          // group name
-  weight: number;      // number of file-level edges
-  symbols: string[];   // deduplicated symbols crossing the boundary
+  from: string; // group name
+  to: string; // group name
+  weight: number; // number of file-level edges
+  symbols: string[]; // deduplicated symbols crossing the boundary
 }
 ```
 
@@ -153,13 +153,13 @@ Enrich group edges with semantic information about what crosses each boundary.
 
 For each cross-group import, classify the imported symbol using the TypeScript Compiler API (`ts.SymbolFlags`):
 
-| Category | Examples |
-|---|---|
-| Type / Interface | `User`, `OrderStatus` |
-| Function | `createUser`, `validateEmail` |
-| Class | `DatabaseClient`, `Logger` |
+| Category          | Examples                          |
+| ----------------- | --------------------------------- |
+| Type / Interface  | `User`, `OrderStatus`             |
+| Function          | `createUser`, `validateEmail`     |
+| Class             | `DatabaseClient`, `Logger`        |
 | Constant / Config | `API_BASE_URL`, `DEFAULT_TIMEOUT` |
-| React Component | `Button`, `UserProfile` |
+| React Component   | `Button`, `UserProfile`           |
 
 ### Call direction analysis
 
@@ -241,25 +241,25 @@ This is a one-shot LLM call with well-structured input.
 
 ## What Is NOT Needed
 
-| Technique | Why it's unnecessary |
-|---|---|
-| SSA / def-use chain analysis | Overkill — group-level flow is captured by import direction + call direction |
-| Interprocedural dataflow | The "flow" at this abstraction is adequately described by which groups call into which |
-| Control flow graphs | Not relevant at the group abstraction level |
-| Tree-sitter (initially) | The TS Compiler API is strictly better for TypeScript; Tree-sitter matters when adding a second language |
+| Technique                    | Why it's unnecessary                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| SSA / def-use chain analysis | Overkill — group-level flow is captured by import direction + call direction                             |
+| Interprocedural dataflow     | The "flow" at this abstraction is adequately described by which groups call into which                   |
+| Control flow graphs          | Not relevant at the group abstraction level                                                              |
+| Tree-sitter (initially)      | The TS Compiler API is strictly better for TypeScript; Tree-sitter matters when adding a second language |
 
 ---
 
 ## Build Order
 
-| Phase | Deliverable | Depends on |
-|---|---|---|
-| 1 | File-level import graph extraction (TS) | — |
-| 2 | Group config format + heuristic classifier | — |
-| 3 | Group-level graph collapse | 1, 2 |
-| 4 | LLM classification for ambiguous files | 2 |
-| 5 | Cross-boundary symbol tracking | 1, 3 |
-| 6 | Diff-on-groups | 3 |
-| 7 | LLM narrative generation | 5 |
+| Phase | Deliverable                                | Depends on |
+| ----- | ------------------------------------------ | ---------- |
+| 1     | File-level import graph extraction (TS)    | —          |
+| 2     | Group config format + heuristic classifier | —          |
+| 3     | Group-level graph collapse                 | 1, 2       |
+| 4     | LLM classification for ambiguous files     | 2          |
+| 5     | Cross-boundary symbol tracking             | 1, 3       |
+| 6     | Diff-on-groups                             | 3          |
+| 7     | LLM narrative generation                   | 5          |
 
 Phases 1 and 2 can be built in parallel. Phase 3 is the first point where the architectural view becomes usable. Phases 4-7 are incremental enrichments.
