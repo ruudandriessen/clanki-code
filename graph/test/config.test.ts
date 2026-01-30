@@ -10,9 +10,7 @@ groups:
 `);
     expect(config.groups).toHaveLength(1);
     expect(config.groups[0].name).toBe("UI Components");
-    expect(config.groups[0].description).toBe(
-      "React components that render UI",
-    );
+    expect(config.groups[0].description).toBe("React components that render UI");
     expect(config.overrides).toBeUndefined();
   });
 
@@ -76,9 +74,7 @@ groups:
   });
 
   test("rejects config without groups", () => {
-    expect(() => parseGroupConfig("overrides: []")).toThrow(
-      "at least one group",
-    );
+    expect(() => parseGroupConfig("overrides: []")).toThrow("at least one group");
   });
 
   test("rejects empty groups array", () => {

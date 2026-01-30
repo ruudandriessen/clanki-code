@@ -1,11 +1,7 @@
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import type {
-  GroupConfig,
-  FileClassification,
-  ClassificationResult,
-} from "./types.ts";
+import type { GroupConfig, FileClassification, ClassificationResult } from "./types.ts";
 import { bestGroup } from "./heuristics.ts";
 
 /**
@@ -161,11 +157,7 @@ function saveCache(cacheDir: string, cache: CacheMap): void {
   fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 }
 
-function lookupCache(
-  cache: CacheMap,
-  relPath: string,
-  absPath: string,
-): CacheEntry | null {
+function lookupCache(cache: CacheMap, relPath: string, absPath: string): CacheEntry | null {
   const entry = cache[relPath];
   if (!entry) return null;
 

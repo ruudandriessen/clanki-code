@@ -19,6 +19,7 @@ Format: `<type>(<optional scope>): <description>`
 Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 
 Examples:
+
 - `feat: add user login flow`
 - `fix(worker): handle empty request body`
 - `docs: update README with deploy steps`

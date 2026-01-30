@@ -1,19 +1,12 @@
 import { describe, test, expect } from "bun:test";
 import { buildGroupGraph } from "../src/group-graph.ts";
-import type {
-  FileEdge,
-  ClassificationResult,
-  GroupEdge,
-} from "../src/types.ts";
+import type { FileEdge, ClassificationResult, GroupEdge } from "../src/types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function classify(
-  map: Record<string, string>,
-  unclassified: string[] = [],
-): ClassificationResult {
+function classify(map: Record<string, string>, unclassified: string[] = []): ClassificationResult {
   return {
     classifications: Object.entries(map).map(([file, group]) => ({
       file,
@@ -28,11 +21,7 @@ function edge(from: string, to: string, symbols: string[]): FileEdge {
   return { from, to, symbols };
 }
 
-function findEdge(
-  edges: GroupEdge[],
-  from: string,
-  to: string,
-): GroupEdge | undefined {
+function findEdge(edges: GroupEdge[], from: string, to: string): GroupEdge | undefined {
   return edges.find((e) => e.from === from && e.to === to);
 }
 
@@ -229,9 +218,7 @@ describe("buildGroupGraph", () => {
   });
 
   test("handles side-effect imports with empty symbols", () => {
-    const fileEdges: FileEdge[] = [
-      edge("/src/components/App.tsx", "/src/styles/global.css", []),
-    ];
+    const fileEdges: FileEdge[] = [edge("/src/components/App.tsx", "/src/styles/global.css", [])];
 
     const classification = classify({
       "/src/components/App.tsx": "UI Components",

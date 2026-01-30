@@ -6,11 +6,7 @@ import type { FileEdge } from "../src/types.ts";
 const fixturesDir = path.resolve(import.meta.dir, "fixtures");
 const tsconfigPath = path.join(fixturesDir, "tsconfig.json");
 
-function findEdge(
-  edges: FileEdge[],
-  fromFile: string,
-  toFile: string,
-): FileEdge | undefined {
+function findEdge(edges: FileEdge[], fromFile: string, toFile: string): FileEdge | undefined {
   const fromPath = path.join(fixturesDir, fromFile);
   const toPath = path.join(fixturesDir, toFile);
   return edges.find((e) => e.from === fromPath && e.to === toPath);
@@ -74,9 +70,7 @@ describe("extractFileGraph", () => {
   });
 
   test("does not include edges to node_modules", () => {
-    const externalEdges = edges.filter((e) =>
-      e.to.includes("node_modules"),
-    );
+    const externalEdges = edges.filter((e) => e.to.includes("node_modules"));
     expect(externalEdges).toHaveLength(0);
   });
 
