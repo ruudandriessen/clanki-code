@@ -14,6 +14,7 @@
     "graph:data": "bun graph/src/generate-data.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
+    "knip": "knip",
     "test": "bun test",
     "deploy": "wrangler deploy"
   },
@@ -39,6 +40,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "bun-types": "^1.3.8",
+    "knip": "^5.82.1",
     "oxfmt": "^0.27.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
