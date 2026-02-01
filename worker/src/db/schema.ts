@@ -55,6 +55,19 @@ export const verification = sqliteTable("verification", {
 });
 
 // ---------------------------------------------------------------------------
+// Installations (GitHub App)
+// ---------------------------------------------------------------------------
+
+export const installations = sqliteTable("installations", {
+  installationId: integer("installation_id").primaryKey(),
+  accountLogin: text("account_login").notNull(),
+  accountType: text("account_type").notNull(),
+  createdAt: integer("created_at").notNull(),
+  deletedAt: integer("deleted_at"),
+  updatedAt: integer("updated_at"),
+});
+
+// ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
 
@@ -62,9 +75,36 @@ export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   repoUrl: text("repo_url"),
+  installationId: integer("installation_id").references(() => installations.installationId, {
+    onDelete: "set null",
+  }),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Pull requests
+// ---------------------------------------------------------------------------
+
+export const pullRequests = sqliteTable(
+  "pull_requests",
+  {
+    id: text("id").primaryKey(),
+    installationId: integer("installation_id")
+      .notNull()
+      .references(() => installations.installationId, { onDelete: "cascade" }),
+    repository: text("repository").notNull(),
+    prNumber: integer("pr_number").notNull(),
+    openedAt: integer("opened_at").notNull(),
+    mergedBy: text("merged_by"),
+    mergedAt: integer("merged_at"),
+    readyAt: integer("ready_at"),
+  },
+  (t) => [
+    uniqueIndex("pr_repo_number").on(t.repository, t.prNumber),
+    index("pr_installation").on(t.installationId),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Group definitions (project-level config)
@@ -108,6 +148,9 @@ export const snapshots = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    pullRequestId: text("pull_request_id").references(() => pullRequests.id, {
+      onDelete: "set null",
+    }),
     commitSha: text("commit_sha"),
     status: text("status").notNull().default("pending"),
     createdAt: integer("created_at").notNull(),
