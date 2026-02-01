@@ -9,7 +9,7 @@ import { handleGitHubWebhook } from "./webhook/github";
 
 type Bindings = {
   ASSETS: Fetcher;
-  clanki_db: D1Database;
+  DB: D1Database;
   BETTER_AUTH_SECRET: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
@@ -37,12 +37,12 @@ app.use(
 app.use("/*", cors());
 
 app.use("/api/*", async (c, next) => {
-  c.set("db", drizzle(c.env.clanki_db, { schema }));
+  c.set("db", drizzle(c.env.DB, { schema }));
   await next();
 });
 
 app.use("/webhook", async (c, next) => {
-  c.set("db", drizzle(c.env.clanki_db, { schema }));
+  c.set("db", drizzle(c.env.DB, { schema }));
   await next();
 });
 
@@ -69,7 +69,7 @@ export default {
     env: Bindings,
     _ctx: ExecutionContext,
   ): Promise<void> {
-    const db = drizzle(env.clanki_db, { schema });
+    const db = drizzle(env.DB, { schema });
     for (const message of batch.messages) {
       try {
         await processQueueMessage(message.body, db);

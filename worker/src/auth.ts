@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./db/schema";
 
 type AuthEnv = {
-  clanki_db: D1Database;
+  DB: D1Database;
   BETTER_AUTH_SECRET: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
@@ -12,7 +12,7 @@ type AuthEnv = {
 
 export function createAuth(env: AuthEnv, request: Request) {
   const origin = new URL(request.url).origin;
-  const db = drizzle(env.clanki_db, { schema });
+  const db = drizzle(env.DB, { schema });
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: "sqlite",
