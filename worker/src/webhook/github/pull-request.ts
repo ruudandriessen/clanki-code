@@ -1,0 +1,96 @@
+import type { EmitterWebhookEvent } from "@octokit/webhooks";
+import { and, eq } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
+import type * as schema from "../../db/schema";
+import { pullRequests } from "../../db/schema";
+import { dispatch } from "../../queue/dispatch";
+
+export async function handlePullRequest(
+  event: EmitterWebhookEvent<"pull_request">,
+  db: DrizzleD1Database<typeof schema>,
+  queue: Queue,
+): Promise<void> {
+  const { action, pull_request: pr, repository } = event.payload;
+
+  if (!("installation" in event.payload) || event.payload.installation == null) {
+    throw Error("No installation found");
+  }
+  const installation = event.payload.installation;
+
+  switch (action) {
+    case "closed": {
+      if (pr.merged) {
+        console.log(`PR #${pr.number} merged: ${pr.title}`);
+
+        await dispatch(queue, {
+          type: "pr_merged",
+          repository: repository.full_name,
+          prNumber: pr.number,
+          prTitle: pr.title,
+          mergedBy: pr.merged_by?.login,
+          mergedAt: pr.merged_at ? new Date(pr.merged_at).getTime() : null,
+          branch: pr.head.ref,
+          baseBranch: pr.base.ref,
+          installationId: installation.id,
+          commitSha: pr.merge_commit_sha,
+        });
+
+        await db
+          .update(pullRequests)
+          .set({
+            mergedAt: pr.merged_at ? new Date(pr.merged_at).getTime() : null,
+            mergedBy: pr.merged_by?.login,
+          })
+          .where(
+            and(
+              eq(pullRequests.prNumber, pr.number),
+              eq(pullRequests.repository, repository.full_name),
+            ),
+          );
+
+        return;
+      }
+
+      console.log(`PR #${pr.number} closed without merge: ${pr.title}`);
+      break;
+    }
+
+    case "opened": {
+      console.log(`PR #${pr.number} opened: ${pr.title}`);
+      const now = Date.now();
+      await db.insert(pullRequests).values({
+        id: crypto.randomUUID(),
+        installationId: installation.id,
+        repository: repository.full_name,
+        prNumber: pr.number,
+        openedAt: now,
+        readyAt: pr.draft ? null : now,
+      });
+      break;
+    }
+
+    case "ready_for_review": {
+      console.log(`PR #${pr.number} ready for review: ${pr.title}`);
+      await db
+        .update(pullRequests)
+        .set({ readyAt: Date.now() })
+        .where(
+          and(
+            eq(pullRequests.prNumber, pr.number),
+            eq(pullRequests.repository, repository.full_name),
+          ),
+        );
+      break;
+    }
+
+    case "synchronize": {
+      console.log(`PR #${pr.number} synchronized: ${pr.title}`);
+      break;
+    }
+
+    case "reopened": {
+      console.log(`PR #${pr.number} reopened: ${pr.title}`);
+      break;
+    }
+  }
+}

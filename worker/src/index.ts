@@ -3,13 +3,18 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import * as schema from "./db/schema";
 import { createAuth } from "./auth";
+import type { QueueMessage } from "./queue/message";
+import { processQueueMessage } from "./queue/processMessage";
+import { handleGitHubWebhook } from "./webhook/github";
 
 type Bindings = {
   ASSETS: Fetcher;
-  DB: D1Database;
+  clanki_db: D1Database;
   BETTER_AUTH_SECRET: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
+  GITHUB_WEBHOOK_SECRET: string;
+  github_webhooks: Queue;
 };
 
 type Variables = {
@@ -32,7 +37,12 @@ app.use(
 app.use("/*", cors());
 
 app.use("/api/*", async (c, next) => {
-  c.set("db", drizzle(c.env.DB, { schema }));
+  c.set("db", drizzle(c.env.clanki_db, { schema }));
+  await next();
+});
+
+app.use("/webhook", async (c, next) => {
+  c.set("db", drizzle(c.env.clanki_db, { schema }));
   await next();
 });
 
@@ -45,9 +55,29 @@ app.get("/api/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+app.post("/webhook", (c) => handleGitHubWebhook(c));
+
 // SPA fallback — serve index.html for all non-API routes
 app.get("*", async (c) => {
   return c.env.ASSETS.fetch(new URL("/index.html", c.req.url));
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(
+    batch: MessageBatch<QueueMessage>,
+    env: Bindings,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
+    const db = drizzle(env.clanki_db, { schema });
+    for (const message of batch.messages) {
+      try {
+        await processQueueMessage(message.body, db);
+        message.ack();
+      } catch (error) {
+        console.error("Failed to process queue message:", error);
+        message.retry();
+      }
+    }
+  },
+};

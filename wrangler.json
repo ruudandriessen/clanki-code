@@ -15,5 +15,18 @@
       "remote": false,
       "migrations_dir": "worker/migrations"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "queue": "clanki-webhooks",
+        "binding": "github_webhooks"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "clanki-webhooks"
+      }
+    ]
+  }
 }
