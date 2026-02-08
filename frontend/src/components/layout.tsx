@@ -46,30 +46,6 @@ function RepoSelector() {
 function useOrganization() {
   const activeOrg = authClient.useActiveOrganization();
   const orgs = authClient.useListOrganizations();
-  const { data: session } = useSession();
-  const creatingRef = useRef(false);
-
-  // Auto-create org for existing users who don't have one yet
-  useEffect(() => {
-    if (
-      !orgs.isPending &&
-      orgs.data &&
-      orgs.data.length === 0 &&
-      session?.user &&
-      !creatingRef.current
-    ) {
-      creatingRef.current = true;
-      const user = session.user;
-      const slug = user.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      authClient.organization.create({
-        name: `${user.name}'s Organization`,
-        slug: `${slug}-${user.id.slice(0, 8)}`,
-      });
-    }
-  }, [orgs.isPending, orgs.data, session]);
 
   // Auto-set active org if none is set but user has orgs
   useEffect(() => {
