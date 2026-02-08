@@ -40,6 +40,23 @@ export function createAuth(env: AuthEnv, request: Request) {
     ],
     trustedOrigins: [origin, "http://localhost:5173"],
     databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => {
+            if (session.activeOrganizationId) return;
+            const members = await db
+              .select({ organizationId: schema.member.organizationId })
+              .from(schema.member)
+              .where(eq(schema.member.userId, session.userId))
+              .limit(1);
+            if (members.length > 0) {
+              return {
+                data: { ...session, activeOrganizationId: members[0].organizationId },
+              };
+            }
+          },
+        },
+      },
       user: {
         create: {
           after: async (user) => {
