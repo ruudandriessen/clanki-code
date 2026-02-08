@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -9,11 +9,14 @@ import {
   BookMarked,
   LogOut,
   Loader2,
+  Building2,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { loadGraphData, GraphDataContext, useGraphData } from "../lib/graph-data";
 import type { GraphData } from "../lib/graph-data";
-import { useSession, signOut } from "../lib/auth-client";
+import { useSession, signOut, authClient } from "../lib/auth-client";
 
 const GROUP_COLORS: Record<string, string> = {
   UI: "#3b82f6",
@@ -35,6 +38,88 @@ function RepoSelector() {
         <GitBranch className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate">main</span>
         <ChevronDown className="w-3.5 h-3.5 ml-auto shrink-0 group-hover:text-foreground transition-colors" />
+      </button>
+    </div>
+  );
+}
+
+function OrgSwitcher() {
+  const activeOrg = authClient.useActiveOrganization();
+  const orgs = authClient.useListOrganizations();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-set active org if none is set but user has orgs
+  useEffect(() => {
+    if (!activeOrg.isPending && !activeOrg.data && orgs.data && orgs.data.length > 0) {
+      authClient.organization.setActive({ organizationId: orgs.data[0].id });
+    }
+  }, [activeOrg.isPending, activeOrg.data, orgs.data]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const org = activeOrg.data;
+  if (!org) return null;
+
+  const handleSave = async () => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== org.name) {
+      await authClient.organization.update({
+        data: { name: trimmed },
+        organizationId: org.id,
+      });
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="px-3 py-3 border-b border-border">
+        <div className="flex items-center gap-1.5">
+          <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSave();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            onBlur={handleSave}
+            className="flex-1 min-w-0 px-2 py-1 rounded-md text-sm bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-primary"
+          />
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleSave}
+            className="p-1 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
+          >
+            <Check className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-3 border-b border-border">
+      <button
+        type="button"
+        onClick={() => {
+          setName(org.name);
+          setEditing(true);
+        }}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors group"
+      >
+        <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <span className="truncate font-medium">{org.name}</span>
+        <Pencil className="w-3 h-3 text-muted-foreground ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
       </button>
     </div>
   );
@@ -98,6 +183,8 @@ function Sidebar({ onClose }: { onClose: () => void }) {
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      <OrgSwitcher />
 
       <RepoSelector />
 
