@@ -34,10 +34,10 @@ jobs:
           REPOSITORY: ${{ inputs.repository }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          PAYLOAD=$(jq --arg repo "$REPOSITORY" --arg sha "$COMMIT_SHA" \
-            '. + {repository: $repo, commitSha: $sha}' analysis-results.json)
+          jq --arg repo "$REPOSITORY" --arg sha "$COMMIT_SHA" \
+            '. + {repository: $repo, commitSha: $sha}' analysis-results.json > payload.json
 
-          curl -sf -X POST "${CALLBACK_URL}" \
+          curl -sS --fail-with-body -X POST "${CALLBACK_URL}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -d "${PAYLOAD}"
+            -d @payload.json
