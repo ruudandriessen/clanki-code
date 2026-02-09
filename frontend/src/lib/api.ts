@@ -31,6 +31,7 @@ export interface Snapshot {
 export interface GroupDefinition {
   name: string;
   description: string;
+  color: string | null;
 }
 
 export interface FileClassification {

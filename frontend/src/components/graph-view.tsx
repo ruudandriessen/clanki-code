@@ -4,21 +4,20 @@ import "@xyflow/react/dist/style.css";
 import { useNavigate } from "@tanstack/react-router";
 import { GroupNode } from "./group-node";
 import type { GraphData } from "../lib/api";
-
-const GROUP_COLORS: Record<string, string> = {
-  UI: "#3b82f6",
-  API: "#10b981",
-  "Graph Extraction": "#8b5cf6",
-  Classification: "#f59e0b",
-  Types: "#ec4899",
-};
-
-const DEFAULT_COLOR = "#6b7280";
+import { groupColor } from "../lib/group-colors";
 
 const nodeTypes = { group: GroupNode };
 
 export function GraphView({ data, projectId }: { data: GraphData; projectId: string }) {
   const navigate = useNavigate();
+
+  const colorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const g of data.groups) {
+      map[g.name] = groupColor(g.color);
+    }
+    return map;
+  }, [data]);
 
   const fileCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -46,13 +45,13 @@ export function GraphView({ data, projectId }: { data: GraphData; projectId: str
         data: {
           label: g.name,
           fileCount: fileCounts[g.name] ?? 0,
-          color: GROUP_COLORS[g.name] ?? DEFAULT_COLOR,
+          color: colorMap[g.name] ?? groupColor(null),
           description: g.description,
         },
         style: { background: "transparent", padding: 0, border: "none", boxShadow: "none" },
       };
     });
-  }, [data, fileCounts]);
+  }, [data, fileCounts, colorMap]);
 
   const edges: Edge[] = useMemo(
     () =>
@@ -66,16 +65,16 @@ export function GraphView({ data, projectId }: { data: GraphData; projectId: str
         labelBgPadding: [8, 4] as [number, number],
         labelBgBorderRadius: 4,
         style: {
-          stroke: GROUP_COLORS[e.from] ?? DEFAULT_COLOR,
+          stroke: colorMap[e.from] ?? groupColor(null),
           strokeWidth: Math.max(1.5, Math.min(e.weight, 6)),
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: GROUP_COLORS[e.from] ?? DEFAULT_COLOR,
+          color: colorMap[e.from] ?? groupColor(null),
         },
         animated: true,
       })),
-    [data],
+    [data, colorMap],
   );
 
   const onNodeClick = useCallback(

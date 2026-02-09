@@ -1,0 +1,1 @@
+ALTER TABLE `group_definitions` ADD `color` text;

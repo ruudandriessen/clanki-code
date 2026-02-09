@@ -4,14 +4,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { ArrowRight, ArrowLeft, FileCode2, Loader2 } from "lucide-react";
 import { useActiveProject } from "../lib/project-context";
 import { getGraphCollections } from "../lib/collections";
-
-const GROUP_COLORS: Record<string, string> = {
-  UI: "#3b82f6",
-  API: "#10b981",
-  "Graph Extraction": "#8b5cf6",
-  Classification: "#f59e0b",
-  Types: "#ec4899",
-};
+import { groupColor } from "../lib/group-colors";
 
 export function GroupDetailPage() {
   const { name } = useParams({ strict: false }) as { name: string };
@@ -91,7 +84,15 @@ export function GroupDetailPage() {
     );
   }
 
-  const color = GROUP_COLORS[name] ?? "#6b7280";
+  const colorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const g of groups!) {
+      map[g.name] = groupColor(g.color);
+    }
+    return map;
+  }, [groups]);
+
+  const color = colorMap[name] ?? groupColor(null);
   const projectId = ctx.projectId;
 
   return (
@@ -145,7 +146,7 @@ export function GroupDetailPage() {
                       to="/projects/$projectId/groups/$name"
                       params={{ projectId, name: e.to }}
                       className="font-medium text-sm hover:underline"
-                      style={{ color: GROUP_COLORS[e.to] ?? "#6b7280" }}
+                      style={{ color: colorMap[e.to] ?? groupColor(null) }}
                     >
                       {e.to}
                     </Link>
@@ -182,7 +183,7 @@ export function GroupDetailPage() {
                       to="/projects/$projectId/groups/$name"
                       params={{ projectId, name: e.from }}
                       className="font-medium text-sm hover:underline"
-                      style={{ color: GROUP_COLORS[e.from] ?? "#6b7280" }}
+                      style={{ color: colorMap[e.from] ?? groupColor(null) }}
                     >
                       {e.from}
                     </Link>

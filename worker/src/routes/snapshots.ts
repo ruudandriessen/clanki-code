@@ -80,7 +80,7 @@ snapshots.get("/:snapshotId/graph", async (c) => {
   ]);
 
   return c.json({
-    groups: groups.map((g) => ({ name: g.name, description: g.description })),
+    groups: groups.map((g) => ({ name: g.name, description: g.description, color: g.color })),
     classifications: classifications.map((cl) => ({
       file: cl.filePath,
       group: cl.groupName,

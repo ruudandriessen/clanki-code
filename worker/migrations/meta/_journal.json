@@ -29,6 +29,13 @@
       "when": 1770464110929,
       "tag": "0003_plain_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1770621900993,
+      "tag": "0004_high_thing",
+      "breakpoints": true
     }
   ]
 }
