@@ -160,6 +160,7 @@ export const groupDefinitions = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description").notNull(),
+    color: text("color"),
   },
   (t) => [uniqueIndex("group_def_project_name").on(t.projectId, t.name)],
 );

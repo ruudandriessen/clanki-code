@@ -9,14 +9,7 @@ import {
 } from "../lib/collections";
 import { ActiveProjectContext } from "../lib/project-context";
 import { fetchLatestSnapshot } from "../lib/api";
-
-const GROUP_COLORS: Record<string, string> = {
-  UI: "#3b82f6",
-  API: "#10b981",
-  "Graph Extraction": "#8b5cf6",
-  Classification: "#f59e0b",
-  Types: "#ec4899",
-};
+import { groupColor } from "../lib/group-colors";
 
 export function ProjectLayout() {
   const { projectId } = useParams({ strict: false });
@@ -168,7 +161,7 @@ export function ProjectLayout() {
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: GROUP_COLORS[g.name] || "#6b7280",
+                        backgroundColor: groupColor(g.color),
                       }}
                     />
                     {g.name}
