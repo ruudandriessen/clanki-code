@@ -194,6 +194,7 @@ export const snapshots = sqliteTable(
       onDelete: "set null",
     }),
     commitSha: text("commit_sha"),
+    branch: text("branch"),
     status: text("status").notNull().default("pending"),
     createdAt: integer("created_at").notNull(),
   },

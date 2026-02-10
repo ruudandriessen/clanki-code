@@ -36,6 +36,13 @@
       "when": 1770621900993,
       "tag": "0004_high_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1770715355082,
+      "tag": "0005_aspiring_freak",
+      "breakpoints": true
     }
   ]
 }

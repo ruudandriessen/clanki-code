@@ -4,7 +4,8 @@ import { ProjectLayout } from "./components/project-layout";
 import { GraphPage } from "./pages/graph-page";
 import { GroupDetailPage } from "./pages/group-page";
 import { LoginPage } from "./pages/login-page";
-import { ProjectsPage } from "./pages/projects-page";
+import { IndexRedirect } from "./pages/index-redirect";
+import { SettingsPage } from "./pages/settings-page";
 
 const rootRoute = createRootRoute({
   component: Outlet,
@@ -22,11 +23,18 @@ const layoutRoute = createRoute({
   component: Layout,
 });
 
-// Landing page — list of projects
+// Landing page — redirect to first project or settings
 const indexRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: "/",
-  component: ProjectsPage,
+  component: IndexRedirect,
+});
+
+// Settings — project management
+const settingsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: "/settings",
+  component: SettingsPage,
 });
 
 // Project-scoped layout that resolves snapshot and provides context
@@ -60,6 +68,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   layoutRoute.addChildren([
     indexRoute,
+    settingsRoute,
     projectRoute.addChildren([projectGraphRoute, snapshotGraphRoute, groupRoute]),
   ]),
 ]);

@@ -37,6 +37,7 @@ export interface Snapshot {
   projectId: string;
   pullRequestId: string | null;
   commitSha: string | null;
+  branch: string | null;
   status: string;
   createdAt: number;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `snapshots` ADD `branch` text;
