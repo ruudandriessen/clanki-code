@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Menu, X, LogOut, Loader2, Building2, Pencil, Check, Settings } from "lucide-react";
+import {
+  Menu,
+  X,
+  LogOut,
+  Loader2,
+  Building2,
+  Pencil,
+  Check,
+  Settings,
+  ChevronDown,
+} from "lucide-react";
 import { cn } from "../lib/utils";
 import { useSession, signOut, authClient } from "../lib/auth-client";
 
@@ -92,9 +102,22 @@ function OrgSwitcher() {
   );
 }
 
-function UserProfile() {
+function UserMenu() {
   const { data: session } = useSession();
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
   if (!session) return null;
 
@@ -107,8 +130,14 @@ function UserProfile() {
     .toUpperCase();
 
   return (
-    <div className="p-3 border-t border-border">
-      <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md group">
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-accent transition-colors"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
         {user.image ? (
           <img src={user.image} alt={user.name} className="w-7 h-7 rounded-full shrink-0" />
         ) : (
@@ -116,19 +145,43 @@ function UserProfile() {
             {initials}
           </div>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-          <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+        <ChevronDown
+          className={cn("w-3.5 h-3.5 ml-auto text-muted-foreground", open && "rotate-180")}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-64 rounded-md border border-border bg-card text-card-foreground shadow-md z-10 overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-border">
+            <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          </div>
+
+          <nav className="p-1.5">
+            <Link
+              to="/settings"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </Link>
+
+            <button
+              type="button"
+              onClick={() =>
+                signOut({
+                  fetchOptions: { onSuccess: () => navigate({ to: "/login" }) },
+                })
+              }
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Log out
+            </button>
+          </nav>
         </div>
-        <button
-          type="button"
-          onClick={() => signOut({ fetchOptions: { onSuccess: () => navigate({ to: "/login" }) } })}
-          className="p-1 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
-          title="Sign out"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -146,6 +199,9 @@ function MobileHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         <Menu className="w-5 h-5" />
       </button>
       <span className="font-semibold text-sm truncate">{orgName ?? "Clanki"}</span>
+      <div className="ml-auto">
+        <UserMenu />
+      </div>
     </div>
   );
 }
@@ -153,12 +209,15 @@ function MobileHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 function Sidebar({ onClose, children }: { onClose: () => void; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-border flex items-center justify-between">
-        <div>
+      <div className="p-4 border-b border-border flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <Link to="/">
             <h1 className="text-lg font-bold text-foreground tracking-tight">Clanki</h1>
           </Link>
           <p className="text-xs text-muted-foreground mt-1">Architecture Explorer</p>
+        </div>
+        <div className="hidden md:block shrink-0">
+          <UserMenu />
         </div>
         <button
           className="md:hidden p-1 rounded-md hover:bg-accent text-muted-foreground"
@@ -173,22 +232,6 @@ function Sidebar({ onClose, children }: { onClose: () => void; children?: React.
       {children}
 
       <div className="flex-1" />
-
-      <nav className="px-3 py-2">
-        <Link
-          to="/settings"
-          activeProps={{ className: "bg-accent text-accent-foreground" }}
-          inactiveProps={{
-            className: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-          }}
-          className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-          Settings
-        </Link>
-      </nav>
-
-      <UserProfile />
     </div>
   );
 }
