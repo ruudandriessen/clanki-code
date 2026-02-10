@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Outlet, Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
-import { LayoutDashboard, GitBranch, Loader2, ChevronDown } from "lucide-react";
+import { LayoutDashboard, GitBranch, Loader2, ChevronDown, Pencil, Check } from "lucide-react";
 import {
   projectsCollection,
   getSnapshotsCollection,
@@ -25,7 +25,33 @@ export function ProjectLayout() {
 
   // Get org name for breadcrumb
   const activeOrg = authClient.useActiveOrganization();
-  const orgName = activeOrg.data?.name;
+  const org = activeOrg.data;
+  const [editingOrgName, setEditingOrgName] = useState(false);
+  const [orgName, setOrgName] = useState("");
+  const orgInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editingOrgName || !orgInputRef.current) return;
+    orgInputRef.current.focus();
+    orgInputRef.current.select();
+  }, [editingOrgName]);
+
+  async function handleSaveOrgName() {
+    if (!org) {
+      setEditingOrgName(false);
+      return;
+    }
+
+    const trimmed = orgName.trim();
+    if (trimmed && trimmed !== org.name) {
+      await authClient.organization.update({
+        data: { name: trimmed },
+        organizationId: org.id,
+      });
+    }
+
+    setEditingOrgName(false);
+  }
 
   // Get all projects for repo dropdown
   const { data: projects } = useLiveQuery((q) => q.from({ p: projectsCollection }));
@@ -160,9 +186,41 @@ export function ProjectLayout() {
         {/* Breadcrumb header */}
         <div className="px-4 py-2 border-b border-border flex items-center gap-1.5 shrink-0 min-h-[41px]">
           {/* Org name */}
-          <span className="text-sm text-muted-foreground truncate">
-            {orgName ?? "Organization"}
-          </span>
+          {editingOrgName ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={orgInputRef}
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveOrgName();
+                  if (e.key === "Escape") setEditingOrgName(false);
+                }}
+                onBlur={handleSaveOrgName}
+                className="min-w-24 max-w-48 px-2 py-0.5 rounded-md text-sm bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleSaveOrgName}
+                className="p-1 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setOrgName(org?.name ?? "");
+                setEditingOrgName(true);
+              }}
+              className="group flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors max-w-52"
+            >
+              <span className="truncate">{org?.name ?? "Organization"}</span>
+              <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
 
           <span className="text-muted-foreground text-xs">/</span>
 
