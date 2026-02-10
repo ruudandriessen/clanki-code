@@ -7,6 +7,7 @@ import { snapshots } from "../db/schema";
 interface AnalysisPayload {
   repository: string;
   commitSha: string;
+  branch?: string;
   fileEdges: Array<{ from: string; to: string; symbols: string[] }>;
   classifications: Array<{ file: string; group: string; strategy: string }>;
   groupEdges: Array<{ from: string; to: string; weight: number; symbols: string[] }>;
@@ -93,6 +94,7 @@ export async function handleAnalysisResults(c: Context): Promise<Response> {
       projectId: project.id,
       pullRequestId: null,
       commitSha,
+      branch: payload.branch ?? null,
       status: "pending",
       createdAt: Date.now(),
     });

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { Outlet, Link, useParams } from "@tanstack/react-router";
+import { useState, useEffect, useMemo } from "react";
+import { Outlet, Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
-import { LayoutDashboard, GitBranch, BookMarked, Loader2, ChevronLeft } from "lucide-react";
+import { LayoutDashboard, GitBranch, Loader2, ChevronDown } from "lucide-react";
 import {
   projectsCollection,
   getSnapshotsCollection,
@@ -10,40 +10,106 @@ import {
 import { ActiveProjectContext } from "../lib/project-context";
 import { fetchLatestSnapshot } from "../lib/api";
 import { groupColor } from "../lib/group-colors";
+import { authClient } from "../lib/auth-client";
 
 export function ProjectLayout() {
   const { projectId } = useParams({ strict: false });
   const snapshotIdFromUrl = (useParams({ strict: false }) as any).snapshotId as string | undefined;
+  const navigate = useNavigate();
+
   const [resolvedSnapshotId, setResolvedSnapshotId] = useState<string | null>(
     snapshotIdFromUrl ?? null,
   );
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [loading, setLoading] = useState(!snapshotIdFromUrl);
-  // Resolve latest snapshot if none is in the URL
-  useEffect(() => {
-    if (snapshotIdFromUrl) {
-      setResolvedSnapshotId(snapshotIdFromUrl);
-      setLoading(false);
-      return;
-    }
-    if (!projectId) return;
 
-    setLoading(true);
-    fetchLatestSnapshot(projectId)
-      .then((s) => setResolvedSnapshotId(s.id))
-      .catch(() => setResolvedSnapshotId(null))
-      .finally(() => setLoading(false));
-  }, [projectId, snapshotIdFromUrl]);
+  // Get org name for breadcrumb
+  const activeOrg = authClient.useActiveOrganization();
+  const orgName = activeOrg.data?.name;
 
-  // Get current project info
+  // Get all projects for repo dropdown
   const { data: projects } = useLiveQuery((q) => q.from({ p: projectsCollection }));
   const project = projects?.find((p) => p.id === projectId);
 
-  // Get snapshots for picker
+  // Get snapshots for branch picker
   const snapshotsCollection = projectId ? getSnapshotsCollection(projectId) : null;
   const { data: snapshots } = useLiveQuery(
     (q) => (snapshotsCollection ? q.from({ s: snapshotsCollection }) : null),
     [projectId],
   );
+
+  // Derive unique branches from snapshots
+  const branches = useMemo(() => {
+    if (!snapshots) return [];
+    const branchSet = new Set<string>();
+    for (const s of snapshots) {
+      branchSet.add(s.branch ?? "main");
+    }
+    const sorted = [...branchSet].toSorted((a, b) => {
+      if (a === "main") return -1;
+      if (b === "main") return 1;
+      return a.localeCompare(b);
+    });
+    return sorted;
+  }, [snapshots]);
+
+  // Resolve latest snapshot: use URL snapshot, or find latest for selected branch
+  useEffect(() => {
+    if (snapshotIdFromUrl) {
+      setResolvedSnapshotId(snapshotIdFromUrl);
+      // Derive branch from the snapshot
+      if (snapshots) {
+        const s = snapshots.find((s) => s.id === snapshotIdFromUrl);
+        if (s) setSelectedBranch(s.branch ?? "main");
+      }
+      setLoading(false);
+      return;
+    }
+    if (!projectId) return;
+
+    // If we have snapshots loaded and a branch selected, find latest for that branch
+    if (snapshots && snapshots.length > 0 && selectedBranch) {
+      const branchSnapshots = snapshots
+        .filter((s) => (s.branch ?? "main") === selectedBranch)
+        .toSorted((a, b) => b.createdAt - a.createdAt);
+      if (branchSnapshots.length > 0) {
+        setResolvedSnapshotId(branchSnapshots[0].id);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Fallback: fetch latest from API
+    setLoading(true);
+    fetchLatestSnapshot(projectId)
+      .then((s) => {
+        setResolvedSnapshotId(s.id);
+        setSelectedBranch(s.branch ?? "main");
+      })
+      .catch(() => setResolvedSnapshotId(null))
+      .finally(() => setLoading(false));
+  }, [projectId, snapshotIdFromUrl, snapshots, selectedBranch]);
+
+  // Set default branch when branches first load
+  useEffect(() => {
+    if (branches.length > 0 && !selectedBranch) {
+      setSelectedBranch(branches.includes("main") ? "main" : branches[0]);
+    }
+  }, [branches, selectedBranch]);
+
+  // Handle branch change
+  function handleBranchChange(branch: string) {
+    setSelectedBranch(branch);
+    // Find latest snapshot for the new branch
+    if (snapshots) {
+      const branchSnapshots = snapshots
+        .filter((s) => (s.branch ?? "main") === branch)
+        .toSorted((a, b) => b.createdAt - a.createdAt);
+      if (branchSnapshots.length > 0) {
+        setResolvedSnapshotId(branchSnapshots[0].id);
+      }
+    }
+  }
 
   // Get graph collections once snapshot is resolved
   const graphCollections =
@@ -77,45 +143,79 @@ export function ProjectLayout() {
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
         <p>No snapshots available for this project yet.</p>
         <p className="text-xs">Snapshots are created when pull requests are merged.</p>
-        <Link to="/" className="text-sm text-primary hover:underline mt-2">
-          <ChevronLeft className="w-3.5 h-3.5 inline mr-1" />
-          Back to projects
+        <Link to="/settings" className="text-sm text-primary hover:underline mt-2">
+          Back to settings
         </Link>
       </div>
     );
   }
 
   const ctx = { projectId: projectId!, snapshotId: resolvedSnapshotId };
+  const hasMultipleProjects = projects && projects.length > 1;
+  const hasMultipleBranches = branches.length > 1;
 
   return (
     <ActiveProjectContext.Provider value={ctx}>
       <div className="flex flex-col h-full">
-        {/* Project header bar */}
-        <div className="px-4 py-2 border-b border-border flex items-center gap-3 shrink-0">
-          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </Link>
-          <BookMarked className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-sm font-medium truncate">{project?.name ?? projectId}</span>
+        {/* Breadcrumb header */}
+        <div className="px-4 py-2 border-b border-border flex items-center gap-1.5 shrink-0 min-h-[41px]">
+          {/* Org name */}
+          <span className="text-sm text-muted-foreground truncate">
+            {orgName ?? "Organization"}
+          </span>
 
-          {snapshots && snapshots.length > 1 && (
-            <>
-              <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground text-xs">/</span>
+
+          {/* Repo selector */}
+          {hasMultipleProjects ? (
+            <div className="relative">
               <select
-                value={resolvedSnapshotId}
-                onChange={(e) => setResolvedSnapshotId(e.target.value)}
-                className="text-xs bg-transparent border border-border rounded px-2 py-1 text-muted-foreground"
+                value={projectId}
+                onChange={(e) =>
+                  navigate({
+                    to: "/projects/$projectId",
+                    params: { projectId: e.target.value },
+                  })
+                }
+                className="text-sm font-medium bg-transparent border-none outline-none cursor-pointer appearance-none pr-5 text-foreground"
               >
-                {snapshots.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.commitSha?.slice(0, 7) ?? s.id.slice(0, 8)} —{" "}
-                    {new Date(s.createdAt).toLocaleDateString()}
+                {projects!.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
-            </>
+              <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          ) : (
+            <span className="text-sm font-medium text-foreground truncate">
+              {project?.name ?? projectId}
+            </span>
           )}
 
+          <span className="text-muted-foreground text-xs">/</span>
+
+          {/* Branch selector */}
+          {hasMultipleBranches ? (
+            <div className="relative">
+              <select
+                value={selectedBranch ?? "main"}
+                onChange={(e) => handleBranchChange(e.target.value)}
+                className="text-sm bg-transparent border-none outline-none cursor-pointer appearance-none pr-5 text-foreground"
+              >
+                {branches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          ) : (
+            <span className="text-sm text-foreground truncate">{selectedBranch ?? "main"}</span>
+          )}
+
+          {/* Stats */}
           {classifications && groupEdgesData && (
             <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
               <GitBranch className="w-3.5 h-3.5" />

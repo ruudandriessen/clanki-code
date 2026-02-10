@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Menu, X, LogOut, Loader2, Building2, Pencil, Check } from "lucide-react";
+import { Menu, X, LogOut, Loader2, Building2, Pencil, Check, Settings } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useSession, signOut, authClient } from "../lib/auth-client";
 
@@ -171,6 +171,22 @@ function Sidebar({ onClose, children }: { onClose: () => void; children?: React.
       <OrgSwitcher />
 
       {children}
+
+      <div className="flex-1" />
+
+      <nav className="px-3 py-2">
+        <Link
+          to="/settings"
+          activeProps={{ className: "bg-accent text-accent-foreground" }}
+          inactiveProps={{
+            className: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          }}
+          className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors"
+        >
+          <Settings className="w-4 h-4" />
+          Settings
+        </Link>
+      </nav>
 
       <UserProfile />
     </div>
