@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import {
-  Menu,
-  X,
-  LogOut,
-  Loader2,
-  Building2,
-  Pencil,
-  Check,
-  Settings,
-  ChevronDown,
-} from "lucide-react";
+import { LogOut, Loader2, Building2, Pencil, Check, Settings, ChevronDown } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useSession, signOut, authClient } from "../lib/auth-client";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "./ui/sidebar";
 
 function useOrganization() {
   const activeOrg = authClient.useActiveOrganization();
@@ -57,7 +57,7 @@ function OrgSwitcher() {
 
   if (editing) {
     return (
-      <div className="px-3 py-3 border-b border-border">
+      <div className="px-3 py-3 border-b border-sidebar-border">
         <div className="flex items-center gap-1.5">
           <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           <input
@@ -85,7 +85,7 @@ function OrgSwitcher() {
   }
 
   return (
-    <div className="px-3 py-3 border-b border-border">
+    <div className="px-3 py-3 border-b border-sidebar-border">
       <button
         type="button"
         onClick={() => {
@@ -204,18 +204,13 @@ function UserMenu({
   );
 }
 
-function MobileHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+function MobileHeader() {
   const activeOrg = authClient.useActiveOrganization();
   const orgName = activeOrg.data?.name;
 
   return (
     <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
-      <button
-        className="p-1 rounded-md hover:bg-accent text-muted-foreground"
-        onClick={onOpenSidebar}
-      >
-        <Menu className="w-5 h-5" />
-      </button>
+      <SidebarTrigger className="text-muted-foreground hover:bg-accent" />
       <span className="font-semibold text-sm truncate">{orgName ?? "Organization"}</span>
       <div className="ml-auto">
         <UserMenu />
@@ -224,56 +219,56 @@ function MobileHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   );
 }
 
-function Sidebar({ onClose, children }: { onClose: () => void; children?: React.ReactNode }) {
+function AppSidebar() {
   const activeOrg = useOrganization();
   const orgName = activeOrg.data?.name ?? "Organization";
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <Link to="/">
-            <h1 className="text-lg font-bold text-foreground tracking-tight truncate">{orgName}</h1>
-          </Link>
-          <p className="text-xs text-muted-foreground mt-1 truncate">{orgName}</p>
+    <Sidebar>
+      <SidebarHeader className="p-0 border-b border-sidebar-border">
+        <div className="p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <Link to="/">
+              <h1 className="text-lg font-bold text-foreground tracking-tight truncate">
+                {orgName}
+              </h1>
+            </Link>
+            <p className="text-xs text-muted-foreground mt-1 truncate">{orgName}</p>
+          </div>
         </div>
-        <button
-          className="md:hidden p-1 rounded-md hover:bg-accent text-muted-foreground"
-          onClick={onClose}
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      </SidebarHeader>
 
       <OrgSwitcher />
 
-      {children}
+      <SidebarContent />
 
-      <div className="flex-1" />
-
-      <div className="border-t border-border p-2">
+      <SidebarFooter className="border-t border-sidebar-border p-2">
         <UserMenu showIdentity menuDirection="up" />
-      </div>
-    </div>
+      </SidebarFooter>
+    </Sidebar>
   );
+}
+
+function SidebarRouteSync() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
+
+  return null;
 }
 
 export function Layout() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     if (!isPending && !session) {
       navigate({ to: "/login" });
     }
   }, [isPending, session, navigate]);
-
-  // Close sidebar on route change (mobile)
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
 
   if (isPending) {
     return (
@@ -286,35 +281,18 @@ export function Layout() {
   if (!session) return null;
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      {/* Mobile backdrop */}
-      <div
-        className={cn(
-          "fixed inset-0 bg-black/50 z-40 transition-opacity md:hidden",
-          sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none",
-        )}
-        onClick={() => setSidebarOpen(false)}
-      />
+    <SidebarProvider>
+      <SidebarRouteSync />
+      <AppSidebar />
+      <SidebarInset className="min-w-0 bg-background text-foreground">
+        <div className="flex h-screen flex-col overflow-hidden">
+          <MobileHeader />
 
-      {/* Sidebar */}
-      <div
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transition-transform duration-200 ease-in-out",
-          "md:relative md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <MobileHeader onOpenSidebar={() => setSidebarOpen(true)} />
-
-        <main className="flex-1 overflow-hidden">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+          <main className="flex-1 overflow-hidden">
+            <Outlet />
+          </main>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
