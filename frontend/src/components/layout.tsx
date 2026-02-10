@@ -10,6 +10,8 @@ import {
   Check,
   Settings,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useSession, signOut, authClient } from "../lib/auth-client";
@@ -28,7 +30,7 @@ function useOrganization() {
   return activeOrg;
 }
 
-function OrgSwitcher() {
+function OrgSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const activeOrg = useOrganization();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
@@ -88,21 +90,29 @@ function OrgSwitcher() {
     <div className="px-3 py-3 border-b border-border">
       <button
         type="button"
+        title={collapsed ? org.name : undefined}
         onClick={() => {
           setName(org.name);
-          setEditing(true);
+          if (!collapsed) {
+            setEditing(true);
+          }
         }}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors group"
+        className={cn(
+          "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors group",
+          collapsed && "justify-center px-1.5",
+        )}
       >
         <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="truncate font-medium">{org.name}</span>
-        <Pencil className="w-3 h-3 text-muted-foreground ml-auto shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
+        {!collapsed && <span className="truncate font-medium">{org.name}</span>}
+        {!collapsed && (
+          <Pencil className="w-3 h-3 text-muted-foreground ml-auto shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
+        )}
       </button>
     </div>
   );
 }
 
-function UserMenu() {
+function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { data: session } = useSession();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -134,7 +144,10 @@ function UserMenu() {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-accent transition-colors"
+        className={cn(
+          "flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-accent transition-colors",
+          collapsed && "px-1.5 justify-center",
+        )}
         aria-expanded={open}
         aria-haspopup="menu"
       >
@@ -145,9 +158,11 @@ function UserMenu() {
             {initials}
           </div>
         )}
-        <ChevronDown
-          className={cn("w-3.5 h-3.5 ml-auto text-muted-foreground", open && "rotate-180")}
-        />
+        {!collapsed && (
+          <ChevronDown
+            className={cn("w-3.5 h-3.5 ml-auto text-muted-foreground", open && "rotate-180")}
+          />
+        )}
       </button>
 
       {open && (
@@ -206,18 +221,40 @@ function MobileHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   );
 }
 
-function Sidebar({ onClose, children }: { onClose: () => void; children?: React.ReactNode }) {
+function Sidebar({
+  onClose,
+  onToggleCollapse,
+  collapsed,
+  children,
+}: {
+  onClose: () => void;
+  onToggleCollapse: () => void;
+  collapsed: boolean;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-border flex items-center justify-between gap-3">
         <div className="min-w-0">
           <Link to="/">
-            <h1 className="text-lg font-bold text-foreground tracking-tight">Clanki</h1>
+            <h1 className="text-lg font-bold text-foreground tracking-tight">
+              {collapsed ? "C" : "Clanki"}
+            </h1>
           </Link>
-          <p className="text-xs text-muted-foreground mt-1">Architecture Explorer</p>
+          {!collapsed && (
+            <p className="text-xs text-muted-foreground mt-1">Architecture Explorer</p>
+          )}
         </div>
-        <div className="hidden md:block shrink-0">
-          <UserMenu />
+        <div className="hidden md:flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="p-1 rounded-md hover:bg-accent text-muted-foreground"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+          <UserMenu collapsed={collapsed} />
         </div>
         <button
           className="md:hidden p-1 rounded-md hover:bg-accent text-muted-foreground"
@@ -227,7 +264,7 @@ function Sidebar({ onClose, children }: { onClose: () => void; children?: React.
         </button>
       </div>
 
-      <OrgSwitcher />
+      <OrgSwitcher collapsed={collapsed} />
 
       {children}
 
@@ -240,6 +277,7 @@ export function Layout() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
@@ -277,12 +315,17 @@ export function Layout() {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transition-transform duration-200 ease-in-out",
+          "fixed inset-y-0 left-0 z-50 bg-card border-r border-border transition-all duration-200 ease-in-out",
+          sidebarCollapsed ? "w-16" : "w-64",
           "md:relative md:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          onClose={() => setSidebarOpen(false)}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+          collapsed={sidebarCollapsed}
+        />
       </div>
 
       {/* Main content */}
