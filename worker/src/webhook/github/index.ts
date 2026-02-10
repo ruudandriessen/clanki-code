@@ -6,15 +6,11 @@ import { handleInstallation } from "./installation";
 import { handlePing } from "./ping";
 import { handlePullRequest } from "./pull-request";
 
-function createWebhooks(
-  secret: string,
-  db: DrizzleD1Database<typeof schema>,
-  queue: Queue,
-): Webhooks {
+function createWebhooks(secret: string, db: DrizzleD1Database<typeof schema>): Webhooks {
   const webhooks = new Webhooks({ secret });
 
   webhooks.on("pull_request", async (event) => {
-    await handlePullRequest(event, db, queue);
+    await handlePullRequest(event, db);
   });
 
   webhooks.on("installation", async (event) => {
@@ -48,10 +44,9 @@ export async function handleGitHubWebhook(c: Context): Promise<Response> {
     console.log(`Received GitHub event: ${event} (${delivery})`);
 
     const db = c.get("db");
-    const queue = c.env.github_webhooks;
     const secret = c.env.GITHUB_WEBHOOK_SECRET;
 
-    const webhooks = createWebhooks(secret, db, queue);
+    const webhooks = createWebhooks(secret, db);
     await webhooks.verifyAndReceive({
       id: delivery,
       name: event,

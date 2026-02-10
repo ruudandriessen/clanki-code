@@ -7,8 +7,6 @@ import { requireAuth } from "./middleware/requireAuth";
 import { installations } from "./routes/installations";
 import { projects } from "./routes/projects";
 import { snapshots } from "./routes/snapshots";
-import type { QueueMessage } from "./queue/message";
-import { processQueueMessage } from "./queue/processMessage";
 import { handleGitHubWebhook } from "./webhook/github";
 import { handleAnalysisResults } from "./api/snapshot-results";
 
@@ -19,7 +17,6 @@ type Bindings = {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   GITHUB_WEBHOOK_SECRET: string;
-  github_webhooks: Queue;
 };
 
 type Variables = {
@@ -80,20 +77,4 @@ app.get("*", async (c) => {
 
 export default {
   fetch: app.fetch,
-  async queue(
-    batch: MessageBatch<QueueMessage>,
-    env: Bindings,
-    _ctx: ExecutionContext,
-  ): Promise<void> {
-    const db = drizzle(env.DB, { schema });
-    for (const message of batch.messages) {
-      try {
-        await processQueueMessage(message.body, db);
-        message.ack();
-      } catch (error) {
-        console.error("Failed to process queue message:", error);
-        message.retry();
-      }
-    }
-  },
 };
