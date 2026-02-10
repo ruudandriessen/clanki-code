@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import * as schema from "./db/schema";
 import { createAuth } from "./auth";
 import { requireAuth } from "./middleware/requireAuth";
+import { installations } from "./routes/installations";
 import { projects } from "./routes/projects";
 import { snapshots } from "./routes/snapshots";
 import type { QueueMessage } from "./queue/message";
@@ -62,9 +63,11 @@ app.get("/api/health", (c) => {
 app.post("/api/analysis/results", (c) => handleAnalysisResults(c));
 
 // Auth guard for data API routes
+app.use("/api/installations/*", requireAuth);
 app.use("/api/projects/*", requireAuth);
 
 // Data API routes
+app.route("/api/installations", installations);
 app.route("/api/projects", projects);
 app.route("/api/projects/:projectId/snapshots", snapshots);
 

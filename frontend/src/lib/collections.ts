@@ -14,7 +14,7 @@ import {
   type GraphData,
 } from "./api";
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
