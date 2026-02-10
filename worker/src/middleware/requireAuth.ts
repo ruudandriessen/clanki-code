@@ -8,6 +8,12 @@ type Env = {
     GITHUB_CLIENT_ID: string;
     GITHUB_CLIENT_SECRET: string;
   };
+  Variables: {
+    session: {
+      session: { userId: string };
+      user: { id: string; name: string; email: string; image?: string | null };
+    };
+  };
 };
 
 export async function requireAuth(c: Context<Env>, next: Next) {
@@ -18,5 +24,6 @@ export async function requireAuth(c: Context<Env>, next: Next) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  c.set("session", session);
   await next();
 }

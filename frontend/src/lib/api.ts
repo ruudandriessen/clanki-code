@@ -8,6 +8,19 @@ async function fetchJson<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${path}`);
+  }
+  return res.json();
+}
+
 // ---- Types matching API responses ----
 
 export interface Project {
@@ -60,6 +73,23 @@ export interface GraphData {
   groupEdges: GroupEdge[];
 }
 
+export interface Installation {
+  installationId: number;
+  accountLogin: string;
+  accountType: string;
+  createdAt: number;
+  deletedAt: number | null;
+  updatedAt: number | null;
+}
+
+export interface GitHubRepo {
+  id: number;
+  fullName: string;
+  name: string;
+  htmlUrl: string;
+  private: boolean;
+}
+
 // ---- Fetch functions ----
 
 export function fetchProjects() {
@@ -76,4 +106,18 @@ export function fetchLatestSnapshot(projectId: string) {
 
 export function fetchGraphData(projectId: string, snapshotId: string) {
   return fetchJson<GraphData>(`/projects/${projectId}/snapshots/${snapshotId}/graph`);
+}
+
+export function fetchInstallations() {
+  return fetchJson<Installation[]>("/installations");
+}
+
+export function fetchInstallationRepos(installationId: number) {
+  return fetchJson<GitHubRepo[]>(`/installations/${installationId}/repos`);
+}
+
+export function createProjects(
+  repos: Array<{ name: string; repoUrl: string; installationId: number }>,
+) {
+  return postJson<Project[]>("/projects", { repos });
 }
