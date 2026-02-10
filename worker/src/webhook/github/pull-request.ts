@@ -3,12 +3,10 @@ import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type * as schema from "../../db/schema";
 import { pullRequests } from "../../db/schema";
-import { dispatch } from "../../queue/dispatch";
 
 export async function handlePullRequest(
   event: EmitterWebhookEvent<"pull_request">,
   db: DrizzleD1Database<typeof schema>,
-  queue: Queue,
 ): Promise<void> {
   const { action, pull_request: pr, repository } = event.payload;
 
@@ -21,19 +19,6 @@ export async function handlePullRequest(
     case "closed": {
       if (pr.merged) {
         console.log(`PR #${pr.number} merged: ${pr.title}`);
-
-        await dispatch(queue, {
-          type: "pr_merged",
-          repository: repository.full_name,
-          prNumber: pr.number,
-          prTitle: pr.title,
-          mergedBy: pr.merged_by?.login,
-          mergedAt: pr.merged_at ? new Date(pr.merged_at).getTime() : null,
-          branch: pr.head.ref,
-          baseBranch: pr.base.ref,
-          installationId: installation.id,
-          commitSha: pr.merge_commit_sha,
-        });
 
         await db
           .update(pullRequests)

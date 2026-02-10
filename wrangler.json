@@ -27,18 +27,5 @@
       "pattern": "clanki.ai",
       "custom_domain": true
     }
-  ],
-  "queues": {
-    "producers": [
-      {
-        "queue": "clanki-webhooks",
-        "binding": "github_webhooks"
-      }
-    ],
-    "consumers": [
-      {
-        "queue": "clanki-webhooks"
-      }
-    ]
-  }
+  ]
 }

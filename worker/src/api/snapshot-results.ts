@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import type { Context } from "hono";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "../db/schema";
+import { snapshots } from "../db/schema";
 
 interface AnalysisPayload {
   repository: string;
@@ -78,7 +79,7 @@ export async function handleAnalysisResults(c: Context): Promise<Response> {
     return c.json({ error: `no project found for repository ${repository}` }, 404);
   }
 
-  const snapshot = await db.query.snapshots.findFirst({
+  let snapshot = await db.query.snapshots.findFirst({
     where: and(
       eq(schema.snapshots.projectId, project.id),
       eq(schema.snapshots.commitSha, commitSha),
@@ -86,7 +87,21 @@ export async function handleAnalysisResults(c: Context): Promise<Response> {
   });
 
   if (!snapshot) {
-    return c.json({ error: `no snapshot found for commit ${commitSha}` }, 404);
+    const id = crypto.randomUUID();
+    await db.insert(snapshots).values({
+      id,
+      projectId: project.id,
+      pullRequestId: null,
+      commitSha,
+      status: "pending",
+      createdAt: Date.now(),
+    });
+    snapshot = await db.query.snapshots.findFirst({
+      where: eq(schema.snapshots.id, id),
+    });
+    if (!snapshot) {
+      return c.json({ error: "failed to create snapshot" }, 500);
+    }
   }
 
   if (snapshot.status === "complete") {
