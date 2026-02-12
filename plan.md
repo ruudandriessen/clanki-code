@@ -4,15 +4,15 @@
 
 The goal is to run OpenCode inside a [Cloudflare Sandbox](https://developers.cloudflare.com/sandbox/) and associate that sandbox with each task run. The `sandboxId` column already exists in the `task_runs` table (`schema.ts:341`) but is always set to `null` (`tasks.ts:297`).
 
-The Cloudflare Sandbox SDK (`@cloudflare/sandbox`) provides container-backed Durable Objects. Key properties:
-- `getSandbox(env.Sandbox, id)` — gets or creates a sandbox by ID. **Same ID = same sandbox** (resume).
-- `sleepAfter` option — auto-sleep after inactivity (default 10 min). After sleep, next request starts a fresh container.
-- `sandbox.exec(cmd)` — run shell commands inside the container.
-- `sandbox.gitCheckout(repo)` — clone a repo into the sandbox.
-- `sandbox.setEnvVars({...})` — inject env vars (API keys, etc.).
-- `sandbox.destroy()` — explicitly tear down a sandbox.
+The Cloudflare Sandbox SDK (`@cloudflare/sandbox`) provides container-backed Durable Objects with first-class OpenCode integration:
 
-There's already an [official Claude Code + Sandbox example](https://github.com/cloudflare/sandbox-sdk/tree/main/examples/claude-code) that demonstrates this exact pattern.
+- **Prebuilt image**: `docker.io/cloudflare/sandbox:X.Y.Z-opencode` — has OpenCode CLI pre-installed.
+- **SDK helpers**: `@cloudflare/sandbox/opencode` exports `createOpencode()` and `createOpencodeServer()`.
+- **Typed client**: `@opencode-ai/sdk` provides a type-safe client for OpenCode's REST API.
+- `getSandbox(env.Sandbox, id)` — gets or creates a sandbox by ID. **Same ID = same sandbox** (resume).
+- `sleepAfter` option — auto-sleep after inactivity. After sleep, next request starts a fresh container.
+
+There's an [official OpenCode + Sandbox example](https://github.com/cloudflare/sandbox-sdk/tree/main/examples/opencode) that demonstrates exactly this pattern.
 
 ## Current Flow
 
@@ -23,44 +23,58 @@ There's already an [official Claude Code + Sandbox example](https://github.com/c
 
 ## Proposed Architecture
 
-Each **task** gets its own sandbox, identified by the task ID. The sandbox contains the cloned repo and a running OpenCode instance. Subsequent runs for the same task reuse the same sandbox (fast). After a configurable idle TTL (e.g. 15 min) with no new messages, the sandbox auto-sleeps and is recycled on next use.
+Each **task** gets its own sandbox, identified by the task ID. OpenCode runs as a persistent server (`opencode serve`) inside the sandbox on port 4096. The worker talks to it using the `@opencode-ai/sdk` typed client via `createOpencode()`.
+
+Subsequent runs for the same task reuse the same sandbox — the OpenCode server is already running, sessions are preserved, and the repo is already cloned. After a configurable idle TTL (15 min) with no new messages, the sandbox auto-sleeps.
 
 ```
-┌─────────────────┐     ┌──────────────────────────────────────────┐
-│  Worker (Hono)  │     │  Sandbox (container per task)             │
-│                 │     │                                          │
-│  POST /runs ────┼────►│  getSandbox(env.Sandbox, taskId)         │
-│                 │     │  ┌────────────────────────────────────┐  │
-│  executeTaskRun │     │  │ /workspace/repo (cloned once)      │  │
-│                 │     │  │ OpenCode running via sandbox.exec  │  │
-│                 │◄────┤  │ stdout/stderr captured as output   │  │
-│                 │     │  └────────────────────────────────────┘  │
-│  Store result   │     │  sleepAfter: "15m" (auto-recycle)        │
-└─────────────────┘     └──────────────────────────────────────────┘
+┌─────────────────┐     ┌────────────────────────────────────────────┐
+│  Worker (Hono)  │     │  Sandbox (container per task)               │
+│                 │     │                                            │
+│  POST /runs ────┼────►│  getSandbox(env.Sandbox, taskId)           │
+│                 │     │  ┌──────────────────────────────────────┐  │
+│  executeTaskRun │     │  │ opencode serve (port 4096)            │  │
+│                 │     │  │ ├── session persists between runs     │  │
+│  createOpencode ┼────►│  │ ├── /workspace/repo (cloned once)    │  │
+│  client.session │     │  │ └── full filesystem access            │  │
+│    .prompt()    │◄────┤  │                                      │  │
+│                 │     │  └──────────────────────────────────────┘  │
+│  Store result   │     │  sleepAfter: "15m" (auto-recycle)          │
+└─────────────────┘     └────────────────────────────────────────────┘
 ```
+
+### Why `opencode serve` (not one-shot CLI)?
+
+- **Session persistence**: OpenCode sessions survive between runs within a warm sandbox. The agent retains conversation history, MCP server connections, and context.
+- **No cold boot per message**: The server is already running; sending a message is just an HTTP call.
+- **Existing code reuse**: The current `opencode.ts` HTTP client pattern maps directly to the `@opencode-ai/sdk` typed client.
+- **The SDK supports it natively**: `createOpencode()` and `createOpencodeServer()` handle starting/connecting to the server.
 
 ## Proposed Changes
 
-### Step 1 — Add `@cloudflare/sandbox` dependency and Dockerfile
+### Step 1 — Add dependencies and Dockerfile
 
-**Install the SDK:**
+**Install:**
 ```bash
-bun add @cloudflare/sandbox
+bun add @cloudflare/sandbox @opencode-ai/sdk
 ```
 
-**Create `Dockerfile`** at repo root (required by Sandbox SDK):
+**Create `Dockerfile`** at repo root:
 ```dockerfile
-FROM docker.io/cloudflare/sandbox:latest
-RUN npm install -g opencode
-ENV COMMAND_TIMEOUT_MS=300000
-EXPOSE 3000
+FROM docker.io/cloudflare/sandbox:0.7.2-opencode
+
+# Clone target repo at sandbox creation time (overridden per-task via gitCheckout)
+WORKDIR /home/user
+
+# Expose OpenCode server port (required for wrangler dev)
+EXPOSE 4096
 ```
 
-This container image has OpenCode pre-installed, matching the pattern from the Claude Code example.
+The `-opencode` variant already has the OpenCode CLI installed at `/root/.opencode/bin`. No need to install it ourselves.
 
-### Step 2 — Configure wrangler.json for Sandbox Durable Object
+### Step 2 — Configure `wrangler.json` for Sandbox Durable Object
 
-Add container and Durable Object configuration to `wrangler.json`:
+Add container, Durable Object, and migration config:
 
 ```jsonc
 {
@@ -69,8 +83,7 @@ Add container and Durable Object configuration to `wrangler.json`:
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "instance_type": "basic",
-      "max_instances": 10
+      "instance_type": "basic"
     }
   ],
   "durable_objects": {
@@ -90,29 +103,53 @@ Add container and Durable Object configuration to `wrangler.json`:
 }
 ```
 
-### Step 3 — Export Sandbox class from worker entry (`worker/src/index.ts`)
-
-The Sandbox SDK requires the worker to re-export the `Sandbox` class so Cloudflare can wire up the Durable Object:
+### Step 3 — Export Sandbox class and update bindings (`worker/src/index.ts`)
 
 ```ts
-// Add at the bottom of index.ts
+// Re-export Sandbox DO class (required by Cloudflare)
 export { Sandbox } from "@cloudflare/sandbox";
 ```
 
-Also add the `Sandbox` binding to the `Bindings` type:
-
+Add to `Bindings` type:
 ```ts
 type Bindings = {
   // ... existing ...
   Sandbox: DurableObjectNamespace;
+  ANTHROPIC_API_KEY?: string;       // for OpenCode inside sandbox
+  GITHUB_APP_ID?: string;           // for installation token generation
+  GITHUB_APP_PRIVATE_KEY?: string;  // for installation token generation
 };
 ```
 
-### Step 4 — Create sandbox helper module (`worker/src/lib/sandbox.ts`)
+### Step 4 — Add GitHub App installation token helper (`worker/src/lib/github.ts`)
+
+Currently the codebase uses user OAuth tokens for GitHub API calls (`installations.ts:27`). For cloning private repos into sandboxes, we need **installation access tokens** — short-lived tokens scoped to the GitHub App installation.
+
+```ts
+export async function createInstallationToken(
+  env: { GITHUB_APP_ID?: string; GITHUB_APP_PRIVATE_KEY?: string },
+  installationId: number,
+): Promise<string>
+```
+
+Flow:
+1. Generate a JWT signed with the GitHub App private key (`GITHUB_APP_PRIVATE_KEY`).
+2. Exchange it for an installation access token via `POST /app/installations/{installation_id}/access_tokens`.
+3. Return the token (valid for ~1 hour).
+
+This token is used to construct an authenticated clone URL: `https://x-access-token:{token}@github.com/{owner}/{repo}.git`
+
+**New secrets** (set via `wrangler secret put`):
+- `GITHUB_APP_ID` — the numeric GitHub App ID
+- `GITHUB_APP_PRIVATE_KEY` — the PEM-encoded private key
+
+### Step 5 — Create sandbox helper module (`worker/src/lib/sandbox.ts`)
 
 ```ts
 import { getSandbox } from "@cloudflare/sandbox";
+import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { Sandbox } from "@cloudflare/sandbox";
+import type { OpencodeClient } from "@opencode-ai/sdk";
 
 const SANDBOX_SLEEP_AFTER = "15m";
 
@@ -128,21 +165,40 @@ export function getTaskSandbox(env: SandboxEnv, taskId: string) {
     normalizeId: true,
   });
 }
+
+/** Get a typed OpenCode SDK client connected to the sandbox's opencode server. */
+export async function getOpenCodeClient(
+  sandbox: ReturnType<typeof getSandbox>,
+  env: SandboxEnv,
+  directory: string,
+) {
+  return createOpencode<OpencodeClient>(sandbox, {
+    directory,
+    config: {
+      provider: {
+        anthropic: {
+          options: { apiKey: env.ANTHROPIC_API_KEY ?? "" },
+        },
+      },
+    },
+  });
+}
 ```
 
 Key design decisions:
-- **`taskId` as sandbox ID** — ensures all runs for the same task share the same sandbox (reuse/resume).
-- **`sleepAfter: "15m"`** — sandbox stays alive for 15 min after the last activity. While the user is actively chatting, the sandbox stays warm and subsequent messages are fast. After 15 min of inactivity, the container sleeps and is recycled on next use.
-- **`normalizeId: true`** — future-proofs against the SDK's upcoming default of lowercase IDs.
+- **`taskId` as sandbox ID** — all runs for the same task share the same sandbox.
+- **`sleepAfter: "15m"`** — sandbox stays warm while the user is chatting. After 15 min idle, auto-recycles.
+- **`createOpencode()`** — starts `opencode serve` inside the sandbox (or connects to it if already running) and returns a typed SDK client.
+- **`normalizeId: true`** — future-proofs for the SDK's upcoming lowercase-ID default.
 
-### Step 5 — Update `executeTaskRun` (`worker/src/lib/task-runs.ts`)
+### Step 6 — Rewrite `executeTaskRun` (`worker/src/lib/task-runs.ts`)
 
-Replace the external OpenCode HTTP call with sandbox-based execution:
+Replace the external OpenCode HTTP calls with sandbox-based execution:
 
 ```
 Before:
   1. Mark run as "running"
-  2. Reuse or create OpenCode session (external HTTP)
+  2. Reuse or create OpenCode session (external HTTP via opencode.ts)
   3. Send message to OpenCode (external HTTP)
   4. Store response
   5. Mark run as "succeeded"
@@ -151,35 +207,58 @@ After:
   1. Mark run as "running"
   2. Get/resume sandbox via getTaskSandbox(env, taskId)
   3. Persist sandboxId on the task run row
-  4. If first run for this task: clone repo into sandbox, set env vars
-  5. Execute opencode command via sandbox.exec()
-  6. Store response (stdout)
-  7. Mark run as "succeeded"
+  4. If repo not yet cloned: generate installation token, gitCheckout with auth
+  5. Get typed OpenCode client via getOpenCodeClient()
+  6. Reuse or create OpenCode session (via SDK client)
+  7. Send prompt via client.session.prompt()
+  8. Extract text response, store as assistant message
+  9. Mark run as "succeeded"
 ```
 
-Specific changes to `executeTaskRun`:
-- Extend `TaskRunEnv` to include `SandboxEnv`.
-- Call `getTaskSandbox(env, taskId)` to get/create the sandbox.
-- Derive a stable `sandboxId` from the task ID and persist it on the `taskRuns` row immediately after creation.
-- On first run: `sandbox.gitCheckout(repoUrl)` and `sandbox.setEnvVars(...)` to set up the environment.
-- Execute: `sandbox.exec('opencode -p "..." --permission-mode acceptEdits')` (or equivalent CLI).
-- Capture `stdout` as the assistant output, `stderr` for error detection.
-- On success, optionally run `sandbox.exec('git diff')` to capture code changes.
-- No explicit `destroy()` call — rely on `sleepAfter` TTL for cleanup.
+Specific changes:
+- Extend `TaskRunEnv` to include `SandboxEnv` + GitHub App secrets.
+- Add `repoUrl` and `installationId` to the `executeTaskRun` args (looked up from the task's project).
+- After getting the sandbox, update the `taskRuns` row with `sandboxId = taskId`.
+- Use `sandbox.gitCheckout(authenticatedRepoUrl)` for initial clone.
+- Use the `@opencode-ai/sdk` client for session management (replacing `opencode.ts`):
+  - `client.session.create({ body: { title }, query: { directory } })`
+  - `client.session.prompt({ path: { id }, query: { directory }, body: { parts, model } })`
+- Session reuse: query existing sessions via the SDK or store sessionId on the task run as today.
 
-### Step 6 — Update the run creation route (`worker/src/routes/tasks.ts`)
+### Step 7 — Update the run creation route (`worker/src/routes/tasks.ts`)
 
 In `POST /api/tasks/:taskId/runs`:
-- Pass `c.env` (which now includes the `Sandbox` binding) through to `executeTaskRun`.
-- The `sandboxId` is derived from `taskId` inside `executeTaskRun`, so no changes to the request body.
+- Look up the task's project to get `repoUrl` and `installationId`.
+- Pass these + `c.env` (including `Sandbox` binding) to `executeTaskRun`.
 
-The `sandboxId` stored on the task run row will be the task ID (since that's what we use as the sandbox identifier).
+```ts
+// Look up project for repo info
+const project = task.projectId
+  ? await db.query.projects.findFirst({
+      where: eq(schema.projects.id, task.projectId),
+      columns: { repoUrl: true, installationId: true },
+    })
+  : null;
 
-### Step 7 — Surface sandbox ID in the frontend
+c.executionCtx.waitUntil(
+  executeTaskRun({
+    db: drizzle(c.env.DB, { schema }),
+    env: c.env,
+    runId: run.id,
+    taskId,
+    taskTitle: task.title,
+    prompt: inputMessage.content,
+    repoUrl: project?.repoUrl ?? null,
+    installationId: project?.installationId ?? null,
+  }),
+);
+```
+
+### Step 8 — Surface sandbox ID in the frontend
 
 The `TaskRun` type in `frontend/src/lib/api.ts:99` already includes `sandboxId: string | null`. No type changes needed.
 
-In `frontend/src/pages/task-page.tsx`, display the sandbox ID in the run status panel when non-null:
+In `frontend/src/pages/task-page.tsx`, display the sandbox ID in the run status panel:
 
 ```tsx
 {run.sandboxId && (
@@ -187,7 +266,7 @@ In `frontend/src/pages/task-page.tsx`, display the sandbox ID in the run status 
 )}
 ```
 
-### Step 8 — No migration needed
+### Step 9 — No migration needed
 
 The `sandbox_id` column already exists in `task_runs` (migration `0007_task_runs.sql`). No schema changes required.
 
@@ -197,15 +276,16 @@ The `sandbox_id` column already exists in `task_runs` (migration `0007_task_runs
 User sends message 1 (task T1)
   → getSandbox(env.Sandbox, "T1", { sleepAfter: "15m" })
   → Sandbox created (cold start ~2-3s)
-  → Clone repo, set env vars
-  → Run opencode → return response
+  → Generate installation token, gitCheckout(authRepoUrl)
+  → createOpencode() starts `opencode serve` on :4096
+  → client.session.create() → client.session.prompt()
   → sandboxId = "T1" stored on task_run row
 
 User sends message 2 (task T1, within 15 min)
   → getSandbox(env.Sandbox, "T1", { sleepAfter: "15m" })
-  → Same sandbox resumed instantly (warm)
-  → Repo already cloned, env vars set
-  → Run opencode → return response (fast!)
+  → Same sandbox, opencode server already running (warm!)
+  → Repo already cloned, session already exists
+  → client.session.prompt() → instant response
   → sandboxId = "T1" stored on task_run row
 
 15 min pass with no activity...
@@ -214,29 +294,31 @@ User sends message 2 (task T1, within 15 min)
 User sends message 3 (task T1, after sleep)
   → getSandbox(env.Sandbox, "T1", { sleepAfter: "15m" })
   → Fresh container starts (cold start)
-  → Re-clone repo, re-set env vars
-  → Run opencode → return response
+  → Re-generate installation token, re-clone repo
+  → createOpencode() restarts server, new session
+  → client.session.prompt()
 ```
 
 ## File Change Summary
 
 | File | Change |
 |------|--------|
-| `package.json` | Add `@cloudflare/sandbox` dependency |
-| `Dockerfile` | **New** — sandbox container image with OpenCode |
-| `wrangler.json` | Add `containers`, `durable_objects`, `migrations` config |
-| `worker/src/index.ts` | Export `Sandbox` class, add `Sandbox` to `Bindings` |
-| `worker/src/lib/sandbox.ts` | **New** — `getTaskSandbox()` helper |
-| `worker/src/lib/task-runs.ts` | Replace external OpenCode HTTP call with `sandbox.exec()` |
-| `worker/src/routes/tasks.ts` | Pass `Sandbox` env binding to `executeTaskRun` |
+| `package.json` | Add `@cloudflare/sandbox`, `@opencode-ai/sdk` |
+| `Dockerfile` | **New** — uses `cloudflare/sandbox:X.Y.Z-opencode` base image |
+| `wrangler.json` | Add `containers`, `durable_objects`, `migrations` |
+| `worker/src/index.ts` | Export `Sandbox` class, add `Sandbox` + API key bindings |
+| `worker/src/lib/github.ts` | **New** — `createInstallationToken()` for private repo cloning |
+| `worker/src/lib/sandbox.ts` | **New** — `getTaskSandbox()`, `getOpenCodeClient()` |
+| `worker/src/lib/task-runs.ts` | Rewrite to use sandbox + `@opencode-ai/sdk` client |
+| `worker/src/routes/tasks.ts` | Look up project repo info, pass to `executeTaskRun` |
 | `frontend/src/pages/task-page.tsx` | Show `sandboxId` in run status panel |
 | `worker/src/db/schema.ts` | No changes (column exists) |
 | `frontend/src/lib/api.ts` | No changes (type exists) |
-| `worker/src/lib/opencode.ts` | Keep as-is (may be useful as fallback or removed later) |
+| `worker/src/lib/opencode.ts` | Can be removed once migration is complete |
 
-## Open Questions
+## New Secrets Required
 
-1. **OpenCode CLI vs server mode** — The plan assumes OpenCode has a CLI mode similar to `claude -p "task"`. If OpenCode only supports HTTP API mode, we'd need to start it as a background process inside the sandbox and route requests to it via `sandbox.exec('curl ...')`. Need to confirm OpenCode's CLI capabilities.
-2. **Repo URL source** — Tasks have an optional `projectId` referencing the `projects` table which has `repoUrl`. We should use this for `sandbox.gitCheckout()`. Need to handle the case where no project is attached to a task.
-3. **Git credentials** — Private repos need auth for cloning. May need to pass a GitHub token via `sandbox.setEnvVars()`.
-4. **`sleepAfter` tuning** — Starting with 15 min. May want to make this configurable per-org or globally via env var.
+Set via `wrangler secret put`:
+- `ANTHROPIC_API_KEY` — for OpenCode inside the sandbox to call Anthropic
+- `GITHUB_APP_ID` — GitHub App numeric ID (for installation token generation)
+- `GITHUB_APP_PRIVATE_KEY` — GitHub App PEM private key (for installation token generation)
