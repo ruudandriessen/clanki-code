@@ -353,7 +353,7 @@ export function Layout() {
 
   if (isPending) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -362,7 +362,7 @@ export function Layout() {
   if (!session) return null;
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="flex h-dvh bg-background text-foreground">
       {/* Mobile backdrop */}
       <div
         className={cn(

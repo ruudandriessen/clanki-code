@@ -14,6 +14,13 @@
   --color-accent-foreground: #ededed;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family:
     system-ui,

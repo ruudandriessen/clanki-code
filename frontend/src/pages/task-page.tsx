@@ -115,7 +115,7 @@ export function TaskPage() {
             onKeyDown={handleKeyDown}
             placeholder="Send a message..."
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary min-h-[42px] max-h-[200px]"
+            className="flex-1 resize-none rounded-lg border border-border bg-background px-4 py-2.5 text-base md:text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary min-h-[42px] max-h-[200px]"
             style={{ height: "auto" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
