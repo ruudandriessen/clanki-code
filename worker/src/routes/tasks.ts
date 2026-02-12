@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { and, desc, eq, gt } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import * as schema from "../db/schema";
 import { executeTaskRun } from "../lib/task-runs";
 
 type Env = {
   Bindings: {
+    DB: D1Database;
     OPENCODE_BASE_URL?: string;
     OPENCODE_SERVER_PASSWORD?: string;
     OPENCODE_SERVER_USERNAME?: string;
@@ -62,6 +63,24 @@ async function ensureRunForOrg(
   }
 
   return run;
+}
+
+async function getNextTaskMessageTimestamp(
+  db: DrizzleD1Database<typeof schema>,
+  taskId: string,
+): Promise<number> {
+  const now = Date.now();
+  const latest = await db.query.taskMessages.findFirst({
+    where: eq(schema.taskMessages.taskId, taskId),
+    columns: { createdAt: true },
+    orderBy: desc(schema.taskMessages.createdAt),
+  });
+
+  if (!latest?.createdAt) {
+    return now;
+  }
+
+  return latest.createdAt >= now ? latest.createdAt + 1 : now;
 }
 
 // GET /api/tasks — list tasks for the active organization
@@ -188,7 +207,7 @@ tasks.post("/:taskId/messages", async (c) => {
     return c.json({ error: "role must be 'user' or 'assistant'" }, 400);
   }
 
-  const now = Date.now();
+  const now = await getNextTaskMessageTimestamp(db, taskId);
   const message = {
     id: crypto.randomUUID(),
     taskId,
@@ -295,7 +314,7 @@ tasks.post("/:taskId/runs", async (c) => {
 
   c.executionCtx.waitUntil(
     executeTaskRun({
-      db,
+      db: drizzle(c.env.DB, { schema }),
       env: c.env,
       runId: run.id,
       taskId,

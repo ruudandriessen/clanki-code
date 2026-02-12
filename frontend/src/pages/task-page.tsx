@@ -33,6 +33,20 @@ export function TaskPage() {
     (q) => (messagesCollection ? q.from({ m: messagesCollection }) : null),
     [taskId],
   );
+  const orderedMessages = messages
+    ? [...messages].toSorted((a, b) => {
+        const createdDiff = a.createdAt - b.createdAt;
+        if (createdDiff !== 0) {
+          return createdDiff;
+        }
+
+        if (a.role !== b.role) {
+          return a.role === "user" ? -1 : 1;
+        }
+
+        return a.id.localeCompare(b.id);
+      })
+    : messages;
 
   useEffect(() => {
     return () => {
@@ -69,8 +83,10 @@ export function TaskPage() {
 
     try {
       const userMessage = await createTaskMessage(taskId, "user", content);
-      queryClient.invalidateQueries({ queryKey: ["taskMessages", taskId] });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["taskMessages", taskId], exact: true }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], exact: true }),
+      ]);
 
       const run = await createTaskRun(taskId, userMessage.id);
       setActiveRunId(run.id);
@@ -110,8 +126,10 @@ export function TaskPage() {
         if (run.error) {
           setRunError(run.error);
         }
-        queryClient.invalidateQueries({ queryKey: ["taskMessages", taskId] });
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ["taskMessages", taskId], exact: true }),
+          queryClient.refetchQueries({ queryKey: ["tasks"], exact: true }),
+        ]);
         return;
       }
 
@@ -147,14 +165,14 @@ export function TaskPage() {
           <div className="flex items-center justify-center py-12 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-        ) : !messages || messages.length === 0 ? (
+        ) : !orderedMessages || orderedMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 px-4">
             <p className="text-sm">No messages yet</p>
             <p className="text-xs">Send a message to start an OpenCode run.</p>
           </div>
         ) : (
           <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
-            {messages.map((msg) => (
+            {orderedMessages.map((msg) => (
               <div
                 key={msg.id}
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
