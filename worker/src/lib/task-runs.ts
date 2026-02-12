@@ -15,20 +15,20 @@ export async function executeTaskRun(args: {
 }): Promise<void> {
   const { db, env, runId, taskId, taskTitle, prompt } = args;
 
-  const startedAt = Date.now();
-  await db
-    .update(schema.taskRuns)
-    .set({
-      status: "running",
-      startedAt,
-      updatedAt: startedAt,
-      error: null,
-    })
-    .where(eq(schema.taskRuns.id, runId));
-
-  await appendRunEvent(db, runId, "status", "running", startedAt);
-
   try {
+    const startedAt = Date.now();
+    await db
+      .update(schema.taskRuns)
+      .set({
+        status: "running",
+        startedAt,
+        updatedAt: startedAt,
+        error: null,
+      })
+      .where(eq(schema.taskRuns.id, runId));
+
+    await appendRunEvent(db, runId, "status", "running", startedAt);
+
     const previousRun = await db.query.taskRuns.findFirst({
       where: and(
         eq(schema.taskRuns.taskId, taskId),
@@ -43,7 +43,7 @@ export async function executeTaskRun(args: {
     const result = await sendOpenCodeMessage(env, sessionId, prompt);
 
     const assistantMessageId = crypto.randomUUID();
-    const assistantCreatedAt = Date.now();
+    const assistantCreatedAt = await getNextTaskMessageTimestamp(db, taskId);
 
     await db.insert(schema.taskMessages).values({
       id: assistantMessageId,
@@ -71,23 +71,7 @@ export async function executeTaskRun(args: {
     await appendRunEvent(db, runId, "assistant", result.output);
     await appendRunEvent(db, runId, "status", "succeeded");
   } catch (error) {
-    const finishedAt = Date.now();
-    const errorMessage = getErrorMessage(error);
-
-    await db
-      .update(schema.taskRuns)
-      .set({
-        status: "failed",
-        finishedAt,
-        updatedAt: finishedAt,
-        error: errorMessage,
-      })
-      .where(eq(schema.taskRuns.id, runId));
-
-    await db.update(schema.tasks).set({ updatedAt: finishedAt }).where(eq(schema.tasks.id, taskId));
-
-    await appendRunEvent(db, runId, "error", errorMessage);
-    await appendRunEvent(db, runId, "status", "failed");
+    await markRunFailed(db, runId, taskId, getErrorMessage(error));
   }
 }
 
@@ -113,4 +97,52 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "Unknown task run failure";
+}
+
+async function getNextTaskMessageTimestamp(
+  db: DrizzleD1Database<typeof schema>,
+  taskId: string,
+): Promise<number> {
+  const now = Date.now();
+  const latest = await db.query.taskMessages.findFirst({
+    where: eq(schema.taskMessages.taskId, taskId),
+    columns: { createdAt: true },
+    orderBy: desc(schema.taskMessages.createdAt),
+  });
+
+  if (!latest?.createdAt) {
+    return now;
+  }
+
+  return latest.createdAt >= now ? latest.createdAt + 1 : now;
+}
+
+async function markRunFailed(
+  db: DrizzleD1Database<typeof schema>,
+  runId: string,
+  taskId: string,
+  message: string,
+): Promise<void> {
+  const finishedAt = Date.now();
+
+  try {
+    await db
+      .update(schema.taskRuns)
+      .set({
+        status: "failed",
+        finishedAt,
+        updatedAt: finishedAt,
+        error: message,
+      })
+      .where(eq(schema.taskRuns.id, runId));
+  } catch {}
+
+  try {
+    await db.update(schema.tasks).set({ updatedAt: finishedAt }).where(eq(schema.tasks.id, taskId));
+  } catch {}
+
+  try {
+    await appendRunEvent(db, runId, "error", message, finishedAt);
+    await appendRunEvent(db, runId, "status", "failed");
+  } catch {}
 }

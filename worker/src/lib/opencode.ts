@@ -33,8 +33,15 @@ export async function sendOpenCodeMessage(
     parts: [{ type: "text", text: prompt }],
   };
 
-  if (env.OPENCODE_MODEL) {
-    requestBody.model = env.OPENCODE_MODEL;
+  const model = parseModelSelector(env.OPENCODE_MODEL);
+  if (env.OPENCODE_MODEL && !model) {
+    throw new Error(
+      'Invalid OPENCODE_MODEL. Use "provider/model" (e.g. "openai/gpt-5.3-codex") or JSON like {"providerID":"openai","modelID":"gpt-5.3-codex"}.',
+    );
+  }
+
+  if (model) {
+    requestBody.model = model;
   }
 
   const response = await requestOpenCode(env, `/session/${encodeURIComponent(sessionId)}/message`, {
@@ -43,13 +50,38 @@ export async function sendOpenCodeMessage(
   });
 
   const payload = (await response.json()) as Record<string, unknown>;
+  const runError = parseAssistantError(payload);
+  if (runError) {
+    throw new Error(runError);
+  }
+
   const assistantMessageId = parseAssistantMessageId(payload);
-  const output = collectText(payload).trim();
+  let output = collectText(payload).trim();
+  if (output.length === 0 && assistantMessageId) {
+    try {
+      const assistantMessage = await fetchOpenCodeMessage(env, sessionId, assistantMessageId);
+      output = collectText(assistantMessage).trim();
+    } catch {}
+  }
 
   return {
     assistantMessageId,
     output: output.length > 0 ? output : "OpenCode completed without text output.",
   };
+}
+
+async function fetchOpenCodeMessage(
+  env: OpenCodeEnv,
+  sessionId: string,
+  messageId: string,
+): Promise<Record<string, unknown>> {
+  const response = await requestOpenCode(
+    env,
+    `/session/${encodeURIComponent(sessionId)}/message/${encodeURIComponent(messageId)}`,
+    { method: "GET" },
+  );
+
+  return (await response.json()) as Record<string, unknown>;
 }
 
 async function requestOpenCode(
@@ -80,6 +112,45 @@ async function requestOpenCode(
   return response;
 }
 
+function parseModelSelector(
+  value: string | undefined,
+): { providerID: string; modelID: string } | null {
+  if (!value) {
+    return null;
+  }
+
+  const model = value.trim();
+  if (model.length === 0) {
+    return null;
+  }
+
+  // Supports OPENCODE_MODEL as "provider/model" for compatibility.
+  const slashIndex = model.indexOf("/");
+  if (slashIndex > 0 && slashIndex < model.length - 1) {
+    const providerID = model.slice(0, slashIndex).trim();
+    const modelID = model.slice(slashIndex + 1).trim();
+    if (providerID.length > 0 && modelID.length > 0) {
+      return { providerID, modelID };
+    }
+  }
+
+  // Supports explicit JSON object, e.g. {"providerID":"openai","modelID":"gpt-5"}.
+  if (model.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(model) as Record<string, unknown>;
+      const providerID = parsed.providerID;
+      const modelID = parsed.modelID;
+      if (typeof providerID === "string" && typeof modelID === "string") {
+        return { providerID, modelID };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function getOpenCodeAuthHeader(env: OpenCodeEnv): Record<string, string> {
   const password = env.OPENCODE_SERVER_PASSWORD;
   if (!password) {
@@ -104,6 +175,34 @@ function parseAssistantMessageId(payload: Record<string, unknown>): string | nul
   }
 
   return id;
+}
+
+function parseAssistantError(payload: Record<string, unknown>): string | null {
+  const info = payload.info;
+  if (!info || typeof info !== "object") {
+    return null;
+  }
+
+  const error = (info as Record<string, unknown>).error;
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const errorRecord = error as Record<string, unknown>;
+  const data = errorRecord.data;
+  if (data && typeof data === "object") {
+    const message = (data as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return `OpenCode assistant failed: ${message}`;
+    }
+  }
+
+  const message = errorRecord.message;
+  if (typeof message === "string" && message.trim().length > 0) {
+    return `OpenCode assistant failed: ${message}`;
+  }
+
+  return "OpenCode assistant failed with an unknown error.";
 }
 
 function collectText(payload: Record<string, unknown>): string {
