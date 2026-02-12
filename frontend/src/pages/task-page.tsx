@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
 import { Loader2, Send } from "lucide-react";
-import { getTaskMessagesCollection, tasksCollection, queryClient } from "../lib/collections";
+import { getTaskMessagesCollection, tasksCollection } from "../lib/collections";
 import {
   createTaskMessage,
   createTaskRun,
@@ -83,10 +83,7 @@ export function TaskPage() {
 
     try {
       const userMessage = await createTaskMessage(taskId, "user", content);
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["taskMessages", taskId], exact: true }),
-        queryClient.refetchQueries({ queryKey: ["tasks"], exact: true }),
-      ]);
+      await Promise.all([messagesCollection?.utils.refetch(), tasksCollection.utils.refetch()]);
 
       const run = await createTaskRun(taskId, userMessage.id);
       setActiveRunId(run.id);
@@ -120,16 +117,15 @@ export function TaskPage() {
         after = events[events.length - 1]?.createdAt;
       }
 
+      await messagesCollection?.utils.refetch();
+
       setRunStatus(run.status);
 
       if (RUN_TERMINAL_STATUSES.has(run.status)) {
         if (run.error) {
           setRunError(run.error);
         }
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ["taskMessages", taskId], exact: true }),
-          queryClient.refetchQueries({ queryKey: ["tasks"], exact: true }),
-        ]);
+        await Promise.all([messagesCollection?.utils.refetch(), tasksCollection.utils.refetch()]);
         return;
       }
 
