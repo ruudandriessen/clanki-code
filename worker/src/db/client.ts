@@ -5,19 +5,18 @@ import * as schema from "./schema";
 export type AppDb = PostgresJsDatabase<typeof schema>;
 
 type DbEnv = {
-  DATABASE_URL: string;
+  HYPERDRIVE: Hyperdrive;
 };
 
-const dbCache = new Map<string, AppDb>();
+const hyperdriveDbCache = new WeakMap<Hyperdrive, AppDb>();
 
 export function getDb(env: DbEnv): AppDb {
-  const databaseUrl = env.DATABASE_URL;
-  const cached = dbCache.get(databaseUrl);
+  const cached = hyperdriveDbCache.get(env.HYPERDRIVE);
   if (cached) {
     return cached;
   }
 
-  const sql = postgres(databaseUrl, {
+  const sql = postgres(env.HYPERDRIVE.connectionString, {
     prepare: false,
     max: 5,
     idle_timeout: 20,
@@ -25,7 +24,6 @@ export function getDb(env: DbEnv): AppDb {
   });
 
   const db = drizzle(sql, { schema });
-  dbCache.set(databaseUrl, db);
-
+  hyperdriveDbCache.set(env.HYPERDRIVE, db);
   return db;
 }

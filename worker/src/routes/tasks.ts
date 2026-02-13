@@ -13,7 +13,7 @@ import { executeTaskRun } from "../lib/task-runs";
 
 type Env = {
   Bindings: {
-    DATABASE_URL: string;
+    HYPERDRIVE: Hyperdrive;
     Sandbox: DurableObjectNamespace<Sandbox>;
     GITHUB_APP_ID?: string;
     GITHUB_APP_PRIVATE_KEY?: string;
