@@ -16,7 +16,7 @@ import { handleGitHubWebhook } from "./webhook/github";
 
 type Bindings = {
   ASSETS: Fetcher;
-  DATABASE_URL: string;
+  HYPERDRIVE: Hyperdrive;
   ELECTRIC_URL: string;
   ELECTRIC_SOURCE_ID?: string;
   ELECTRIC_SOURCE_SECRET?: string;
