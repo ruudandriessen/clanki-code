@@ -12,7 +12,7 @@ import { taskMessagesCollection, tasksCollection } from "../lib/collections";
 const RUN_TERMINAL_STATUSES = new Set(["succeeded", "failed"]);
 
 export function TaskPage() {
-  const { taskId } = useParams({ from: "/layout/tasks/$taskId" });
+  const { taskId } = useParams({ from: "/_layout/tasks/$taskId" });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
