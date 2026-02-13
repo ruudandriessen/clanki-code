@@ -18,7 +18,6 @@ type Bindings = {
   HYPERDRIVE: Hyperdrive;
   DATABASE_URL?: string;
   ENVIRONMENT?: string;
-  ELECTRIC_URL: string;
   ELECTRIC_SOURCE_ID?: string;
   ELECTRIC_SOURCE_SECRET?: string;
   BETTER_AUTH_SECRET: string;
