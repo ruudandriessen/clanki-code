@@ -233,7 +233,10 @@ export async function executeTaskRun(args: {
       })
       .where(eq(schema.taskRuns.id, runId));
 
-    await db.update(schema.tasks).set({ updatedAt: finishedAt }).where(eq(schema.tasks.id, taskId));
+    await db
+      .update(schema.tasks)
+      .set({ status: "open", updatedAt: finishedAt })
+      .where(eq(schema.tasks.id, taskId));
   } catch (error) {
     await markRunFailed({
       db,
@@ -772,6 +775,9 @@ async function markRunFailed(args: {
   } catch {}
 
   try {
-    await db.update(schema.tasks).set({ updatedAt: finishedAt }).where(eq(schema.tasks.id, taskId));
+    await db
+      .update(schema.tasks)
+      .set({ status: "open", updatedAt: finishedAt })
+      .where(eq(schema.tasks.id, taskId));
   } catch {}
 }
