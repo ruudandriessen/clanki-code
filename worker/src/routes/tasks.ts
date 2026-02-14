@@ -516,7 +516,7 @@ tasks.post("/:taskId/runs", async (c) => {
             eq(schema.projects.id, task.projectId),
             eq(schema.projects.organizationId, orgId),
           ),
-          columns: { repoUrl: true, installationId: true },
+          columns: { repoUrl: true, installationId: true, setupCommand: true },
         })
       : null;
 
@@ -534,6 +534,7 @@ tasks.post("/:taskId/runs", async (c) => {
         prompt: inputMessage.content,
         repoUrl: project.repoUrl,
         installationId: project.installationId ?? null,
+        setupCommand: project.setupCommand ?? null,
         initiatedByUserId: userId,
         organizationId: orgId,
         provider: providerInput,

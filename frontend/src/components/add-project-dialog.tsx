@@ -100,6 +100,7 @@ export function AddProjectDialog({
             name: r.fullName,
             repo_url: r.htmlUrl,
             installation_id: r.installationId,
+            setup_command: null,
           };
         });
 

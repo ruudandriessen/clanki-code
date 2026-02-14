@@ -3,12 +3,14 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { BookMarked, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   completeProviderOauth,
   deleteProviderCredential,
   fetchProviderCredentialStatus,
   startProviderOauth,
   upsertProviderCredential,
+  updateProjectSetupCommand,
   type ProviderCredentialStatus,
   type ProviderOauthStart,
 } from "../lib/api";
@@ -38,10 +40,23 @@ export function SettingsPage() {
   const [completingOauth, setCompletingOauth] = useState(false);
   const [oauthAttempt, setOauthAttempt] = useState<ProviderOauthStart | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
+  const [projectSetupDrafts, setProjectSetupDrafts] = useState<Record<string, string>>({});
+  const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
+  const [projectSetupErrors, setProjectSetupErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void loadOpenAiStatus();
   }, []);
+
+  useEffect(() => {
+    setProjectSetupDrafts((previous) => {
+      const next: Record<string, string> = {};
+      for (const project of projects) {
+        next[project.id] = previous[project.id] ?? project.setup_command ?? "";
+      }
+      return next;
+    });
+  }, [projects]);
 
   async function loadOpenAiStatus() {
     setLoadingStatus(true);
@@ -131,6 +146,38 @@ export function SettingsPage() {
       setProviderError(error instanceof Error ? error.message : "OAuth flow is not complete yet");
     } finally {
       setCompletingOauth(false);
+    }
+  }
+
+  async function handleSaveProjectSetupCommand(projectId: string) {
+    if (savingProjectId) {
+      return;
+    }
+
+    const draftValue = projectSetupDrafts[projectId] ?? "";
+    const setupCommand = draftValue.trim().length > 0 ? draftValue.trim() : null;
+
+    setSavingProjectId(projectId);
+    setProjectSetupErrors((previous) => {
+      const next = { ...previous };
+      delete next[projectId];
+      return next;
+    });
+
+    try {
+      await updateProjectSetupCommand(projectId, setupCommand);
+      setProjectSetupDrafts((previous) => ({
+        ...previous,
+        [projectId]: setupCommand ?? "",
+      }));
+    } catch (error) {
+      setProjectSetupErrors((previous) => ({
+        ...previous,
+        [projectId]:
+          error instanceof Error ? error.message : "Failed to save project setup command",
+      }));
+    } finally {
+      setSavingProjectId(null);
     }
   }
 
@@ -258,19 +305,61 @@ export function SettingsPage() {
               {projects.map((project) => (
                 <Card key={project.id} className="gap-0 py-0">
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <BookMarked className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{project.name}</p>
-                        {project.repo_url ? (
-                          <p className="truncate text-xs text-muted-foreground">
-                            {project.repo_url}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <BookMarked className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{project.name}</p>
+                          {project.repo_url ? (
+                            <p className="truncate text-xs text-muted-foreground">
+                              {project.repo_url}
+                            </p>
+                          ) : null}
+                        </div>
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                          {formatMsTimestamp(project.created_at)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Setup command (runs after clone on a new sandbox)
+                        </p>
+                        <div className="flex flex-col gap-2 md:flex-row">
+                          <Input
+                            value={projectSetupDrafts[project.id] ?? project.setup_command ?? ""}
+                            onChange={(event) =>
+                              setProjectSetupDrafts((previous) => ({
+                                ...previous,
+                                [project.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="bun install"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => void handleSaveProjectSetupCommand(project.id)}
+                            disabled={
+                              savingProjectId !== null ||
+                              (
+                                projectSetupDrafts[project.id] ??
+                                project.setup_command ??
+                                ""
+                              ).trim() === (project.setup_command ?? "")
+                            }
+                          >
+                            {savingProjectId === project.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Save
+                          </Button>
+                        </div>
+                        {projectSetupErrors[project.id] ? (
+                          <p className="text-xs text-destructive">
+                            {projectSetupErrors[project.id]}
                           </p>
                         ) : null}
                       </div>
-                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                        {formatMsTimestamp(project.created_at)}
-                      </span>
                     </div>
                   </CardContent>
                 </Card>

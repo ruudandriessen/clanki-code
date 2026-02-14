@@ -121,6 +121,7 @@ projects.post("/", async (c) => {
         name: repo.name,
         repoUrl: repo.repoUrl,
         installationId: repo.installationId,
+        setupCommand: null,
         createdAt,
         updatedAt,
       };
@@ -135,6 +136,72 @@ projects.post("/", async (c) => {
   }
 
   return withTxid(c.json(result.created, 201), result.txid);
+});
+
+// PATCH /api/projects/:projectId — update project settings
+projects.patch("/:projectId", async (c) => {
+  const db = c.get("db");
+  const orgId = getOrgId(c);
+  const { projectId } = c.req.param();
+
+  if (!orgId) {
+    return c.json({ error: "No active organization" }, 400);
+  }
+
+  let body: { setupCommand?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!("setupCommand" in body)) {
+    return c.json({ error: "setupCommand is required" }, 400);
+  }
+
+  if (typeof body.setupCommand !== "string" && body.setupCommand !== null) {
+    return c.json({ error: "setupCommand must be a string or null" }, 400);
+  }
+
+  const setupCommand =
+    typeof body.setupCommand === "string"
+      ? body.setupCommand.trim().length > 0
+        ? body.setupCommand.trim()
+        : null
+      : null;
+
+  const result = await withTransaction(db, async (tx, txid) => {
+    const existing = await tx.query.projects.findFirst({
+      where: and(eq(schema.projects.id, projectId), eq(schema.projects.organizationId, orgId)),
+      columns: { id: true },
+    });
+
+    if (!existing) {
+      return { notFound: true as const };
+    }
+
+    const updatedAt = Date.now();
+    await tx
+      .update(schema.projects)
+      .set({ setupCommand, updatedAt })
+      .where(and(eq(schema.projects.id, projectId), eq(schema.projects.organizationId, orgId)));
+
+    const updated = await tx.query.projects.findFirst({
+      where: and(eq(schema.projects.id, projectId), eq(schema.projects.organizationId, orgId)),
+    });
+
+    return { updated, txid };
+  });
+
+  if ("notFound" in result) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  return withTxid(c.json(result.updated), result.txid);
 });
 
 export { projects };
