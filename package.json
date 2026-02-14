@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@cloudflare/sandbox": "^0.7.2",
+    "@durable-streams/client": "^0.2.1",
     "@electric-sql/client": "^1.5.4",
     "@octokit/webhooks": "^14.2.0",
     "@opencode-ai/sdk": "^1.2.1",

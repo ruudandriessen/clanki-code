@@ -448,14 +448,13 @@ tasks.get("/:taskId/stream", async (c) => {
       );
     }
 
-    const headers = new Headers();
-    headers.set("Content-Type", upstream.headers.get("content-type") ?? "text/event-stream");
-    headers.set("Cache-Control", "no-cache, no-transform");
-    headers.set("Connection", "keep-alive");
-
     return new Response(upstream.body, {
       status: 200,
-      headers,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
     });
   } catch (error) {
     return c.json(

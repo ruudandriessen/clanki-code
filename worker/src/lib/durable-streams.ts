@@ -1,3 +1,5 @@
+import { DurableStream, DurableStreamError } from "@durable-streams/client";
+
 export type DurableStreamsEnv = {
   DURABLE_STREAMS_SERVICE_ID?: string;
   DURABLE_STREAMS_SECRET?: string;
@@ -13,7 +15,6 @@ export interface TaskEventStreamMessage {
 }
 
 const DURABLE_STREAMS_BASE_URL = "https://api.electric-sql.cloud";
-const TASK_EVENTS_CONTENT_TYPE = "application/json";
 
 function isDurableStreamsConfigured(env: DurableStreamsEnv): boolean {
   return (
@@ -24,9 +25,47 @@ function isDurableStreamsConfigured(env: DurableStreamsEnv): boolean {
   );
 }
 
+function buildStreamUrl(env: DurableStreamsEnv, streamPath: string): string {
+  const serviceId = env.DURABLE_STREAMS_SERVICE_ID?.trim();
+  if (!serviceId) {
+    throw new Error("Missing DURABLE_STREAMS_SERVICE_ID");
+  }
+
+  const encodedPath = streamPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${DURABLE_STREAMS_BASE_URL}/v1/stream/${encodeURIComponent(serviceId)}/${encodedPath}`;
+}
+
+function buildHeaders(env: DurableStreamsEnv): Record<string, string> {
+  const secret = env.DURABLE_STREAMS_SECRET?.trim();
+  if (!secret) {
+    throw new Error("Missing DURABLE_STREAMS_SECRET");
+  }
+  return { Authorization: `Bearer ${secret}` };
+}
+
 function buildTaskEventsStreamPath(args: { organizationId: string; taskId: string }): string {
-  const { organizationId, taskId } = args;
-  return `org/${organizationId}/tasks/${taskId}/events`;
+  return `org/${args.organizationId}/tasks/${args.taskId}/events`;
+}
+
+async function ensureStream(env: DurableStreamsEnv, url: string): Promise<boolean> {
+  const headers = buildHeaders(env);
+  try {
+    await DurableStream.create({ url, headers, contentType: "application/json" });
+    return true;
+  } catch (error) {
+    if (error instanceof DurableStreamError && error.code === "CONFLICT_EXISTS") {
+      return true;
+    }
+    console.warn("Failed to ensure durable stream", {
+      url,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 export async function appendTaskEventToDurableStream(args: {
@@ -42,30 +81,25 @@ export async function appendTaskEventToDurableStream(args: {
   }
 
   const streamPath = buildTaskEventsStreamPath({ organizationId, taskId });
-  const streamUrl = buildDurableStreamUrl(env, streamPath);
+  const url = buildStreamUrl(env, streamPath);
 
-  const ensured = await ensureDurableStream(env, streamUrl);
+  const ensured = await ensureStream(env, url);
   if (!ensured) {
     return;
   }
 
-  const appendResponse = await fetch(streamUrl.toString(), {
-    method: "POST",
-    headers: {
-      Authorization: buildAuthorizationHeader(env),
-      "Content-Type": TASK_EVENTS_CONTENT_TYPE,
-    },
-    body: JSON.stringify(event),
-  });
-
-  if (!appendResponse.ok) {
-    const details = (await appendResponse.text()).trim();
+  try {
+    const handle = new DurableStream({
+      url,
+      headers: buildHeaders(env),
+      batching: false,
+    });
+    await handle.append(JSON.stringify(event));
+  } catch (error) {
     console.warn("Failed to append task event to durable stream", {
       organizationId,
       taskId,
-      status: appendResponse.status,
-      statusText: appendResponse.statusText,
-      details,
+      message: error instanceof Error ? error.message : String(error),
     });
   }
 }
@@ -83,70 +117,20 @@ export async function openTaskEventsSse(args: {
   }
 
   const streamPath = buildTaskEventsStreamPath({ organizationId, taskId });
-  const streamUrl = buildDurableStreamUrl(env, streamPath);
+  const url = buildStreamUrl(env, streamPath);
 
-  // Ensure stream exists so first subscribers don't get 404 before the first run event.
-  await ensureDurableStream(env, streamUrl);
+  await ensureStream(env, url);
 
-  const readUrl = new URL(streamUrl);
+  const readUrl = new URL(url);
   readUrl.searchParams.set("offset", offset);
   readUrl.searchParams.set("live", "sse");
 
   return fetch(readUrl.toString(), {
     method: "GET",
     headers: {
-      Authorization: buildAuthorizationHeader(env),
+      ...buildHeaders(env),
       Accept: "text/event-stream",
       "Cache-Control": "no-cache",
     },
   });
-}
-
-function buildDurableStreamUrl(env: DurableStreamsEnv, streamPath: string): URL {
-  const serviceId = env.DURABLE_STREAMS_SERVICE_ID?.trim();
-  if (!serviceId) {
-    throw new Error("Missing DURABLE_STREAMS_SERVICE_ID");
-  }
-
-  const encodedPath = streamPath
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-
-  return new URL(
-    `/v1/stream/${encodeURIComponent(serviceId)}/${encodedPath}`,
-    DURABLE_STREAMS_BASE_URL,
-  );
-}
-
-function buildAuthorizationHeader(env: DurableStreamsEnv): string {
-  const secret = env.DURABLE_STREAMS_SECRET?.trim();
-  if (!secret) {
-    throw new Error("Missing DURABLE_STREAMS_SECRET");
-  }
-
-  return `Bearer ${secret}`;
-}
-
-async function ensureDurableStream(env: DurableStreamsEnv, streamUrl: URL): Promise<boolean> {
-  const response = await fetch(streamUrl.toString(), {
-    method: "PUT",
-    headers: {
-      Authorization: buildAuthorizationHeader(env),
-      "Content-Type": TASK_EVENTS_CONTENT_TYPE,
-    },
-  });
-
-  if (response.status === 200 || response.status === 201) {
-    return true;
-  }
-
-  const details = (await response.text()).trim();
-  console.warn("Failed to ensure durable stream", {
-    url: streamUrl.toString(),
-    status: response.status,
-    statusText: response.statusText,
-    details,
-  });
-  return false;
 }
