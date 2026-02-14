@@ -87,7 +87,7 @@ Maps each source file to a group within a snapshot.
 
 **Unique:** `(snapshot_id, file_path)`
 
-Maps directly to `FileClassification` in `graph/src/types.ts`. Paths stored relative (not absolute) for portability.
+Maps directly to the analysis payload `FileClassification` shape. Paths are stored relative (not absolute) for portability.
 
 ---
 
@@ -105,7 +105,7 @@ Import relationships between source files within a snapshot.
 
 **Unique:** `(snapshot_id, from_file, to_file)`
 
-Symbols stored as a JSON text column. This is a pragmatic choice — symbol lists on file edges are read as a unit and don't need individual querying. Maps to `FileEdge` in `graph/src/types.ts`.
+Symbols are stored as a JSON text column. This is a pragmatic choice: symbol lists on file edges are read as a unit and do not need individual querying.
 
 ---
 
@@ -124,7 +124,7 @@ Collapsed group-level dependency edges within a snapshot.
 
 **Unique:** `(snapshot_id, from_group, to_group)`
 
-Maps to `GroupEdge` in `graph/src/types.ts`. Like file edges, symbols are stored as JSON for now. Phase 5 enrichment (symbol kind, call direction) will require migrating to a junction table — see [Future: Phase 5](#future-phase-5-enriched-symbols).
+Like file edges, symbols are stored as JSON for now. Phase 5 enrichment (symbol kind, call direction) will require migrating to a junction table — see [Future: Phase 5](#future-phase-5-enriched-symbols).
 
 ---
 
