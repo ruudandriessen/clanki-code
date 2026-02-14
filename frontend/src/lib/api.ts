@@ -123,6 +123,7 @@ export interface Project extends Record<string, unknown> {
   name: string;
   repoUrl: string | null;
   installationId: number | null;
+  setupCommand: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -165,6 +166,13 @@ export function createProjects(
   repos: Array<CreateProjectInput>,
 ): Promise<MutationResult<Project[]>> {
   return postJsonWithTx<Project[]>("/projects", { repos });
+}
+
+export function updateProjectSetupCommand(
+  projectId: string,
+  setupCommand: string | null,
+): Promise<MutationResult<Project>> {
+  return patchJsonWithTx<Project>(`/projects/${projectId}`, { setupCommand });
 }
 
 // ---- Task types ----

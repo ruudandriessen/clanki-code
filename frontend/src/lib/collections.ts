@@ -11,6 +11,7 @@ const projectSchema = z.object({
   name: z.string(),
   repo_url: z.string().nullable(),
   installation_id: z.number().nullable(),
+  setup_command: z.string().nullable(),
   created_at: z.bigint(),
   updated_at: z.bigint(),
 });

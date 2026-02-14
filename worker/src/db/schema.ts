@@ -183,6 +183,7 @@ export const projects = pgTable(
     installationId: integer("installation_id").references(() => installations.installationId, {
       onDelete: "set null",
     }),
+    setupCommand: text("setup_command"),
     createdAt: msTimestamp("created_at").notNull(),
     updatedAt: msTimestamp("updated_at").notNull(),
   },

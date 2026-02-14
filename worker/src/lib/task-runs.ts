@@ -44,6 +44,7 @@ export async function executeTaskRun(args: {
   prompt: string;
   repoUrl: string;
   installationId: number | null;
+  setupCommand: string | null;
   initiatedByUserId: string;
   provider: SupportedOpencodeProvider;
   model: string;
@@ -58,6 +59,7 @@ export async function executeTaskRun(args: {
     prompt,
     repoUrl,
     installationId,
+    setupCommand,
     initiatedByUserId,
     provider,
     model,
@@ -103,6 +105,21 @@ export async function executeTaskRun(args: {
     if (needsClone) {
       const cloneUrl = gitToken ? buildAuthenticatedCloneUrl(repoUrl, gitToken) : repoUrl;
       await sandbox.gitCheckout(cloneUrl, { targetDir: repoDir });
+
+      const normalizedSetupCommand = setupCommand?.trim() ?? "";
+      if (normalizedSetupCommand.length > 0) {
+        const setupResult = await sandbox.exec(normalizedSetupCommand, { cwd: repoDir });
+        if (!setupResult.success) {
+          throw new Error(
+            formatSetupCommandFailure({
+              command: normalizedSetupCommand,
+              exitCode: setupResult.exitCode,
+              stdout: setupResult.stdout,
+              stderr: setupResult.stderr,
+            }),
+          );
+        }
+      }
     } else if (gitToken) {
       // Update the remote URL with the fresh token so pushes work on warm sandboxes
       const freshUrl = buildAuthenticatedCloneUrl(repoUrl, gitToken);
@@ -263,6 +280,31 @@ function extractTextFromParts(parts: unknown): string {
     }
   }
   return chunks.join("\n\n");
+}
+
+function truncateCommandOutput(value: string, maxLength = 2000): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}\n...truncated...`;
+}
+
+function formatSetupCommandFailure(args: {
+  command: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}): string {
+  const stdout = truncateCommandOutput(args.stdout.trim());
+  const stderr = truncateCommandOutput(args.stderr.trim());
+  const output = [stderr, stdout].filter((part) => part.length > 0).join("\n\n");
+
+  if (output.length === 0) {
+    return `Project setup command failed (exit code ${args.exitCode}): ${args.command}`;
+  }
+
+  return `Project setup command failed (exit code ${args.exitCode}): ${args.command}\n${output}`;
 }
 
 async function streamSessionEvents(args: {

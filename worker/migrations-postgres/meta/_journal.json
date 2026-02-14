@@ -29,6 +29,13 @@
       "when": 1771065847576,
       "tag": "0003_late_gorgon",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771096360634,
+      "tag": "0004_hard_shadow_king",
+      "breakpoints": true
     }
   ]
 }
