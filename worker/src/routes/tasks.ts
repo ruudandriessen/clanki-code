@@ -555,6 +555,10 @@ tasks.post("/:taskId/runs", async (c) => {
     };
 
     await db.insert(schema.taskRuns).values(run);
+    await db
+      .update(schema.tasks)
+      .set({ status: "running", updatedAt: now })
+      .where(eq(schema.tasks.id, taskId));
 
     const project = task.projectId
       ? await db.query.projects.findFirst({
