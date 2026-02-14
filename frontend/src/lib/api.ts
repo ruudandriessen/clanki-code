@@ -270,9 +270,8 @@ export function fetchTaskRuns(taskId: string) {
   return fetchJson<TaskRun[]>(`/tasks/${taskId}/runs`);
 }
 
-export function getTaskEventStreamUrl(taskId: string, offset: string) {
-  const params = new URLSearchParams({ offset });
-  return `${BASE}/tasks/${taskId}/stream?${params.toString()}`;
+export function getTaskEventStreamUrl(taskId: string) {
+  return `${globalThis.location.origin}/api/tasks/${taskId}/stream`;
 }
 
 // ---- Provider settings ----

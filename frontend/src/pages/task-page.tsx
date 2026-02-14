@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery, eq } from "@tanstack/react-db";
 import { useParams } from "@tanstack/react-router";
+import { stream } from "@durable-streams/client";
 import { Check, Loader2, Pencil, Send, X } from "lucide-react";
 import {
   TaskStreamActivity,
@@ -141,14 +142,8 @@ export function TaskPage() {
       return;
     }
 
-    let cancelled = false;
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    let source: EventSource | null = null;
-    let reconnectDelayMs = 500;
-    let resetOffsetAttempted = false;
+    const abortController = new AbortController();
     const seenEventIds = new Set<string>();
-    const offsetStorageKey = getTaskStreamOffsetStorageKey(taskId);
-    let currentOffset = "-1";
 
     const applyEvent = (event: TaskStreamEvent) => {
       if (seenEventIds.has(event.id)) {
@@ -180,72 +175,24 @@ export function TaskPage() {
       }
     };
 
-    const open = (offset: string) => {
-      currentOffset = offset;
-      const streamUrl = getTaskEventStreamUrl(taskId, offset);
-      source = new EventSource(streamUrl, { withCredentials: true });
+    const streamUrl = getTaskEventStreamUrl(taskId);
 
-      source.addEventListener("data", (rawEvent) => {
-        const events = parseTaskStreamDataEvent((rawEvent as MessageEvent).data);
-        if (events.length === 0) {
-          return;
-        }
-
-        reconnectDelayMs = 500;
-        resetOffsetAttempted = false;
-        for (const event of events) {
-          if (cancelled) {
-            return;
-          }
+    stream<TaskStreamEvent>({
+      url: streamUrl,
+      offset: "-1",
+      live: "sse",
+      json: true,
+      signal: abortController.signal,
+    }).then((res) => {
+      res.subscribeJson(({ items }) => {
+        for (const event of items) {
           applyEvent(event);
         }
       });
-
-      source.addEventListener("control", (rawEvent) => {
-        const control = parseTaskStreamControlEvent((rawEvent as MessageEvent).data);
-        if (!control) {
-          return;
-        }
-
-        if (typeof control.streamNextOffset === "string" && control.streamNextOffset.length > 0) {
-          currentOffset = control.streamNextOffset;
-          storeTaskStreamOffset(offsetStorageKey, control.streamNextOffset);
-          resetOffsetAttempted = false;
-        }
-      });
-
-      source.addEventListener("error", () => {
-        source?.close();
-        if (cancelled) {
-          return;
-        }
-
-        let nextOffset = currentOffset;
-        if (!resetOffsetAttempted && nextOffset !== "-1") {
-          nextOffset = "-1";
-          currentOffset = "-1";
-          resetOffsetAttempted = true;
-          clearTaskStreamOffset(offsetStorageKey);
-        }
-        const delay = reconnectDelayMs;
-        reconnectDelayMs = Math.min(reconnectDelayMs * 2, 8000);
-        reconnectTimeout = setTimeout(() => {
-          if (!cancelled) {
-            open(nextOffset);
-          }
-        }, delay);
-      });
-    };
-
-    clearTaskStreamOffset(offsetStorageKey);
-    open("-1");
+    });
 
     return () => {
-      cancelled = true;
-      source?.close();
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
+      abortController.abort();
     };
   }, [taskId]);
 
@@ -511,99 +458,6 @@ export function TaskPage() {
       </div>
     </div>
   );
-}
-
-function getTaskStreamOffsetStorageKey(taskId: string): string {
-  return `task-stream-offset:${taskId}`;
-}
-
-function storeTaskStreamOffset(key: string, offset: string): void {
-  try {
-    sessionStorage.setItem(key, offset);
-  } catch {}
-}
-
-function clearTaskStreamOffset(key: string): void {
-  try {
-    sessionStorage.removeItem(key);
-  } catch {}
-}
-
-function parseTaskStreamDataEvent(raw: unknown): TaskStreamEvent[] {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map(toTaskStreamEvent)
-        .filter((event): event is TaskStreamEvent => event !== null);
-    }
-
-    const single = toTaskStreamEvent(parsed);
-    return single ? [single] : [];
-  } catch {
-    return [];
-  }
-}
-
-function toTaskStreamEvent(value: unknown): TaskStreamEvent | null {
-  const record = toRecord(value);
-  if (!record) {
-    return null;
-  }
-
-  const id = toStringOrNull(record.id);
-  const taskId = toStringOrNull(record.taskId);
-  const runId = toStringOrNull(record.runId);
-  const kind = toStringOrNull(record.kind);
-  const payload = toStringOrNull(record.payload);
-  const createdAt = record.createdAt;
-  if (
-    !id ||
-    !taskId ||
-    !runId ||
-    !kind ||
-    payload === null ||
-    typeof createdAt !== "number" ||
-    !Number.isFinite(createdAt)
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    taskId,
-    runId,
-    kind,
-    payload,
-    createdAt,
-  };
-}
-
-function parseTaskStreamControlEvent(
-  raw: unknown,
-): { streamNextOffset?: string; upToDate?: boolean; streamClosed?: boolean } | null {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return null;
-  }
-
-  try {
-    const record = toRecord(JSON.parse(raw));
-    if (!record) {
-      return null;
-    }
-
-    return {
-      streamNextOffset: toStringOrNull(record.streamNextOffset) ?? undefined,
-      upToDate: typeof record.upToDate === "boolean" ? record.upToDate : undefined,
-      streamClosed: typeof record.streamClosed === "boolean" ? record.streamClosed : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 type AssistantMessageSnapshot = {
