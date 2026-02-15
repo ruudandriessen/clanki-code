@@ -15,11 +15,12 @@ import { taskMessagesCollection, tasksCollection } from "../lib/collections";
 
 interface TaskPageProps {
   taskId: string;
+  branch: string | null;
   projectName: string;
   title: string;
 }
 
-export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
+export function TaskPage({ taskId, title, branch, projectName }: TaskPageProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [runEvents, setRunEvents] = useState<TaskStreamEvent[]>([]);
@@ -248,16 +249,18 @@ export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
           <div className="min-w-0">
             <div className="flex min-h-8 min-w-0 items-center gap-2">
               <h2 className="m-0 truncate text-sm font-medium">{title}</h2>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={handleTitleEditStart}
-                className="text-muted-foreground"
-                title="Edit task name"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
+              {branch != null ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleTitleEditStart}
+                  className="text-muted-foreground"
+                  title="Edit task name"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
             </div>
             <p className="truncate text-xs text-muted-foreground">{projectName}</p>
           </div>
