@@ -22,12 +22,13 @@ export function Sidebar({ onClose }: SidebarProps) {
         </Button>
       </div>
 
-      <OrgSwitcher />
-
       <TaskList />
 
-      <div className="border-t border-border p-2">
-        <UserMenu showIdentity menuDirection="up" />
+      <div className="border-t border-border">
+        <OrgSwitcher />
+        <div className="p-2">
+          <UserMenu showIdentity menuDirection="up" />
+        </div>
       </div>
     </div>
   );
