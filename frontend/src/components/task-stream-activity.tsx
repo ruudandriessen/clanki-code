@@ -36,8 +36,8 @@ export function TaskStreamActivity({ items }: { items: TaskStreamActivityItem[] 
   }
 
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%] space-y-1.5">
+    <div>
+      <div className="space-y-1.5">
         {items.map((item) => {
           const Icon = getActivityIcon(item.icon);
           const { action, details } = splitActivityLabel(item.label);
