@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { RPCHandler } from "@orpc/server/fetch";
 import type { Sandbox } from "@cloudflare/sandbox";
 import type { AppDb } from "./db/client";
 import { getDb } from "./db/client";
 import { createAuth } from "./auth";
 import { requireAuth } from "./middleware/requireAuth";
+import { orpcRouter } from "./orpc/router";
 import { installations } from "./routes/installations";
 import { projects } from "./routes/projects";
 import { settings } from "./routes/settings";
@@ -32,9 +34,14 @@ type Bindings = {
 
 type Variables = {
   db: AppDb;
+  session: {
+    session: { userId: string; activeOrganizationId?: string | null };
+    user: { id: string; name: string; email: string; image?: string | null };
+  };
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+const rpcHandler = new RPCHandler(orpcRouter);
 
 app.use(
   "/api/auth/*",
@@ -70,12 +77,30 @@ app.use("/api/projects/*", requireAuth);
 app.use("/api/tasks/*", requireAuth);
 app.use("/api/tasks", requireAuth);
 app.use("/api/settings/*", requireAuth);
+app.use("/api/rpc/*", requireAuth);
 
 // Data API routes
 app.route("/api/installations", installations);
 app.route("/api/projects", projects);
 app.route("/api/tasks", tasks);
 app.route("/api/settings", settings);
+app.all("/api/rpc/*", async (c) => {
+  const result = await rpcHandler.handle(c.req.raw, {
+    prefix: "/api/rpc",
+    context: {
+      db: c.get("db"),
+      env: c.env,
+      session: c.get("session"),
+      executionCtx: c.executionCtx,
+    },
+  });
+
+  if (!result.matched) {
+    return c.notFound();
+  }
+
+  return result.response;
+});
 
 app.post("/webhook", (c) => handleGitHubWebhook(c));
 
