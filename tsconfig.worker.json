@@ -10,5 +10,5 @@
     "composite": true,
     "skipLibCheck": true
   },
-  "include": ["worker/src"]
+  "include": ["worker/src", "shared/orpc"]
 }
