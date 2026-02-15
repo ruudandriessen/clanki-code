@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery, eq } from "@tanstack/react-db";
 import { stream } from "@durable-streams/client";
-import { Check, Loader2, Pencil, Send, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, Pencil, Send, Wrench, X } from "lucide-react";
 import {
   TaskStreamActivity,
   type TaskStreamActivityIcon,
@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { Event as OpenCodeEvent } from "@opencode-ai/sdk";
 import {
   parseOpenCodeEventPayload,
@@ -17,6 +18,35 @@ import {
 } from "../../../shared/task-stream-events";
 import { createTaskPrompt, getTaskEventStreamUrl } from "../lib/api";
 import { taskMessagesCollection, tasksCollection } from "../lib/collections";
+
+function CollapsedActivityGroup({ items }: { items: TaskStreamActivityItem[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div>
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight
+            className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
+          />
+          <Wrench className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            {items.length} tool {items.length === 1 ? "call" : "calls"}
+          </span>
+        </button>
+        {expanded ? (
+          <div className="mt-1.5 ml-5">
+            <TaskStreamActivity items={items} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 interface TaskPageProps {
   taskId: string;
@@ -281,16 +311,20 @@ export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
             <p className="text-xs">Send a message to start an OpenCode run.</p>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl space-y-4 px-4 py-4">
+          <div className="space-y-4 px-4 py-4">
             {timelineEntries.map((entry) => {
               if (entry.type === "activity") {
                 return <TaskStreamActivity key={entry.id} items={[entry.item]} />;
               }
 
+              if (entry.type === "activity-group") {
+                return <CollapsedActivityGroup key={entry.id} items={entry.items} />;
+              }
+
               if (entry.type === "assistant-preview") {
                 return (
-                  <div key={entry.id} className="flex justify-start">
-                    <div className="max-w-[80%] text-sm whitespace-pre-wrap text-foreground">
+                  <div key={entry.id}>
+                    <div className="text-sm whitespace-pre-wrap text-foreground">
                       {entry.content}
                     </div>
                   </div>
@@ -298,11 +332,11 @@ export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
               }
 
               return (
-                <div key={entry.id} className="flex justify-start">
+                <div key={entry.id} className={entry.role === "user" ? "flex justify-end" : ""}>
                   <div
-                    className={`max-w-[80%] text-sm whitespace-pre-wrap ${
+                    className={`text-sm whitespace-pre-wrap ${
                       entry.role === "user"
-                        ? "rounded-lg bg-primary px-4 py-2.5 text-primary-foreground"
+                        ? "w-fit rounded-lg bg-primary px-4 py-2.5 text-primary-foreground"
                         : "text-foreground"
                     }`}
                   >
@@ -317,8 +351,8 @@ export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
         )}
       </div>
 
-      <div className="shrink-0 border-t border-border p-4">
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
+      <div className="shrink-0 p-4">
+        <div className="flex items-end gap-2">
           <Textarea
             ref={inputRef}
             value={input}
@@ -338,7 +372,7 @@ export function TaskPage({ taskId, title, projectName }: TaskPageProps) {
             type="button"
             onClick={() => void handleSend()}
             disabled={!input.trim() || sending}
-            className="h-auto shrink-0 rounded-lg p-2.5"
+            className="h-[42px] w-[42px] shrink-0 rounded-lg p-0"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
@@ -371,6 +405,12 @@ type TimelineEntry =
       id: string;
       createdAt: number;
       item: TaskStreamActivityItem;
+    }
+  | {
+      type: "activity-group";
+      id: string;
+      createdAt: number;
+      items: TaskStreamActivityItem[];
     }
   | {
       type: "assistant-preview";
@@ -540,14 +580,50 @@ function buildChronologicalTimeline(args: {
     });
   }
 
-  sortable.sort((a, b) => {
+  const sorted = sortable.toSorted((a, b) => {
     if (a.item.createdAt === b.item.createdAt) {
       return a.order - b.order;
     }
     return a.item.createdAt - b.item.createdAt;
   });
 
-  return sortable.map((entry) => entry.item);
+  return groupTimelineActivities(sorted.map((entry) => entry.item));
+}
+
+function groupTimelineActivities(entries: TimelineEntry[]): TimelineEntry[] {
+  const result: TimelineEntry[] = [];
+  let pendingActivities: Array<TimelineEntry & { type: "activity" }> = [];
+
+  for (const entry of entries) {
+    if (entry.type === "activity") {
+      pendingActivities.push(entry);
+      continue;
+    }
+
+    if (pendingActivities.length > 0) {
+      if (entry.type === "message" && entry.role === "assistant") {
+        result.push({
+          type: "activity-group",
+          id: `group-${pendingActivities[0].id}`,
+          createdAt: pendingActivities[0].createdAt,
+          items: pendingActivities.map((a) => a.item),
+        });
+      } else {
+        for (const a of pendingActivities) {
+          result.push(a);
+        }
+      }
+      pendingActivities = [];
+    }
+
+    result.push(entry);
+  }
+
+  for (const a of pendingActivities) {
+    result.push(a);
+  }
+
+  return result;
 }
 
 function toTaskStreamActivityItem(event: TaskStreamEvent): ChronologicalActivityItem | null {
