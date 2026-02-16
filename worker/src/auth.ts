@@ -12,16 +12,28 @@ const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
 function resolveOrigin(request: Request): string {
   const requestOrigin = new URL(request.url).origin;
   const originHeader = request.headers.get("origin");
-  if (!originHeader) {
-    return requestOrigin;
+
+  let origin: string;
+  if (originHeader) {
+    try {
+      origin = isLocalOrigin(new URL(originHeader).origin)
+        ? new URL(originHeader).origin
+        : requestOrigin;
+    } catch {
+      origin = requestOrigin;
+    }
+  } else {
+    origin = requestOrigin;
   }
 
-  try {
-    const origin = new URL(originHeader).origin;
-    return isLocalOrigin(origin) ? origin : requestOrigin;
-  } catch {
-    return requestOrigin;
+  const proto = request.headers.get("x-forwarded-proto");
+  if (proto) {
+    const url = new URL(origin);
+    url.protocol = `${proto}:`;
+    return url.origin;
   }
+
+  return origin;
 }
 
 function isLocalOrigin(origin: string): boolean {
