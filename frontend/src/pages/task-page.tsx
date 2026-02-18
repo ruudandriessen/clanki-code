@@ -17,7 +17,7 @@ import {
   type TaskStreamEvent,
 } from "../../../shared/task-stream-events";
 import { createTaskPrompt, getTaskEventStreamUrl } from "../lib/api";
-import { taskMessagesCollection } from "../lib/collections";
+import { taskMessagesCollection, tasksCollection } from "../lib/collections";
 
 function CollapsedActivityGroup({ items }: { items: TaskStreamActivityItem[] }) {
   const [expanded, setExpanded] = useState(false);
