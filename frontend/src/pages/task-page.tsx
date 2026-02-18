@@ -76,6 +76,12 @@ export function TaskPage({ taskId, title, projectName, error }: TaskPageProps) {
     [taskId],
   );
 
+  const { data: taskData } = useLiveQuery(
+    (q) => q.from({ t: tasksCollection }).where(({ t }) => eq(t.id, taskId)),
+    [taskId],
+  );
+  const isRunning = taskData?.[0]?.status === "running";
+
   const persistedAssistantMessage = getLatestAssistantMessage(messages);
   const streamAssistantPreview = getLatestStreamAssistantPreview(runEvents);
   const streamActivityItems = buildTaskStreamActivityItems(runEvents);
@@ -361,7 +367,7 @@ export function TaskPage({ taskId, title, projectName, error }: TaskPageProps) {
               );
             })}
 
-            {sending && (
+            {isRunning && (
               <div className="flex items-center gap-1 py-1">
                 <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]" />
                 <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]" />
