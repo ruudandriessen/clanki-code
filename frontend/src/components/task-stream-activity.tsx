@@ -26,6 +26,7 @@ export interface TaskStreamActivityItem {
   id: string;
   icon: TaskStreamActivityIcon;
   label: string;
+  details?: string[];
   tone?: "default" | "muted" | "error" | "success";
   spinning?: boolean;
 }
@@ -50,24 +51,43 @@ export function TaskStreamActivity({ items }: { items: TaskStreamActivityItem[] 
                   item.tone === "error" ? "text-destructive" : "text-muted-foreground",
                 )}
               />
-              <span
-                className={cn(
-                  "whitespace-pre-wrap",
-                  item.tone === "error" ? "text-destructive" : "text-foreground",
-                )}
-              >
-                {action}
-              </span>
-              {details ? (
-                <span
-                  className={cn(
-                    "whitespace-pre-wrap text-muted-foreground",
-                    item.tone === "error" && "text-destructive/80",
-                  )}
-                >
-                  {details}
-                </span>
-              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start gap-1">
+                  <span
+                    className={cn(
+                      "whitespace-pre-wrap",
+                      item.tone === "error" ? "text-destructive" : "text-foreground",
+                    )}
+                  >
+                    {action}
+                  </span>
+                  {details ? (
+                    <span
+                      className={cn(
+                        "whitespace-pre-wrap text-muted-foreground",
+                        item.tone === "error" && "text-destructive/80",
+                      )}
+                    >
+                      {details}
+                    </span>
+                  ) : null}
+                </div>
+                {item.details && item.details.length > 0 ? (
+                  <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                    {item.details.map((detail) => (
+                      <div
+                        key={`${item.id}-${detail}`}
+                        className={cn(
+                          "whitespace-pre-wrap break-words",
+                          item.tone === "error" && "text-destructive/80",
+                        )}
+                      >
+                        {detail}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           );
         })}
