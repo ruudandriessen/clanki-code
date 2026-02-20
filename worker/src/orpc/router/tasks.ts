@@ -150,15 +150,6 @@ async function queueTaskRun(args: {
     updatedAt: now,
   };
 
-  await db
-    .update(schema.tasks)
-    .set({
-      status: "running",
-      error: null,
-      updatedAt: now,
-    })
-    .where(and(eq(schema.tasks.id, task.id), eq(schema.tasks.organizationId, orgId)));
-
   const runnerId = env.TaskRunner.idFromName(run.id);
   const runner = env.TaskRunner.get(runnerId);
   await runner.schedule({
@@ -348,7 +339,11 @@ export const tasksRouter = {
       await tx.insert(schema.taskMessages).values(message);
       await tx
         .update(schema.tasks)
-        .set({ updatedAt: createdAt })
+        .set(
+          input.message.role === "user"
+            ? { status: "running", error: null, updatedAt: createdAt }
+            : { updatedAt: createdAt },
+        )
         .where(eq(schema.tasks.id, input.taskId));
 
       return { data: message, txid };
