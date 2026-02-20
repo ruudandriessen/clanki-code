@@ -176,19 +176,21 @@ export function TaskList() {
     }
   }
 
-  async function handleDeleteTask() {
-    if (!taskToDelete || deletingTask) {
+  async function handleDeleteTask(task?: { id: string }) {
+    const targetTask = task ?? taskToDelete;
+
+    if (!targetTask || deletingTask) {
       return;
     }
 
-    const deletingTaskId = taskToDelete.id;
+    const deletingTaskId = targetTask.id;
 
     setDeletingTask(true);
     setDeleteError(null);
 
     try {
       tasksCollection.delete(deletingTaskId);
-      setTaskToDelete(null);
+      setTaskToDelete((currentTask) => (currentTask?.id === deletingTaskId ? null : currentTask));
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : "Failed to delete task");
     } finally {
@@ -251,6 +253,8 @@ export function TaskList() {
                       : (projectName ?? task.branch);
                   const hasError = (task.error?.trim().length ?? 0) > 0;
 
+                  const shouldSkipDeleteConfirmation = group.key === "merged";
+
                   return (
                     <div
                       key={task.id}
@@ -296,10 +300,16 @@ export function TaskList() {
                           isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                         )}
                         onClick={() => {
+                          if (shouldSkipDeleteConfirmation) {
+                            void handleDeleteTask({ id: task.id });
+                            return;
+                          }
+
                           setTaskToDelete({ id: task.id, title: task.title });
                           setDeleteError(null);
                         }}
                         title={`Delete ${task.title}`}
+                        disabled={deletingTask}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
