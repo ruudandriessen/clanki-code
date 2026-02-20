@@ -67,6 +67,9 @@ interface TaskPageProps {
     prNumber: number;
     url: string;
     status: "open" | "merged" | "closed" | "draft";
+    reviewState: string | null;
+    checksState: string | null;
+    checksConclusion: string | null;
   } | null;
   title: string;
   error: string | null;
@@ -84,6 +87,60 @@ function getPullRequestButtonClasses(status: "open" | "merged" | "closed" | "dra
     default:
       return "";
   }
+}
+
+function humanizePullRequestStatus(status: string | null): string {
+  if (!status) {
+    return "unknown";
+  }
+
+  return status.replaceAll("_", " ");
+}
+
+function getReviewStatusClasses(reviewState: string | null): string {
+  switch (reviewState) {
+    case "approved":
+      return "border-emerald-300 bg-emerald-100 text-emerald-900";
+    case "changes_requested":
+      return "border-red-300 bg-red-100 text-red-900";
+    case "dismissed":
+      return "border-zinc-300 bg-zinc-100 text-zinc-800";
+    default:
+      return "border-border bg-card text-muted-foreground";
+  }
+}
+
+function getChecksStatusClasses(checksState: string | null, checksConclusion: string | null): string {
+  switch (checksConclusion) {
+    case "success":
+      return "border-emerald-300 bg-emerald-100 text-emerald-900";
+    case "failure":
+    case "cancelled":
+    case "timed_out":
+    case "action_required":
+    case "startup_failure":
+    case "stale":
+      return "border-red-300 bg-red-100 text-red-900";
+  }
+
+  switch (checksState) {
+    case "queued":
+    case "in_progress":
+    case "requested":
+    case "pending":
+    case "waiting":
+      return "border-amber-300 bg-amber-100 text-amber-900";
+    default:
+      return "border-border bg-card text-muted-foreground";
+  }
+}
+
+function formatChecksStatus(checksState: string | null, checksConclusion: string | null): string {
+  if (checksState && checksConclusion) {
+    return `${humanizePullRequestStatus(checksState)} (${humanizePullRequestStatus(checksConclusion)})`;
+  }
+
+  return humanizePullRequestStatus(checksState ?? checksConclusion);
 }
 
 export function TaskPage({
@@ -361,22 +418,42 @@ export function TaskPage({
             )}
           </div>
           {pullRequest ? (
-            <Button
-              asChild
-              variant="outline"
-              size="xs"
-              className={getPullRequestButtonClasses(pullRequest.status)}
-            >
-              <a
-                href={pullRequest.url}
-                target="_blank"
-                rel="noreferrer"
-                title={`Open PR #${pullRequest.prNumber} on GitHub`}
+            <div className="shrink-0 space-y-1 text-right">
+              <Button
+                asChild
+                variant="outline"
+                size="xs"
+                className={getPullRequestButtonClasses(pullRequest.status)}
               >
-                PR #{pullRequest.prNumber} {pullRequest.status}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
+                <a
+                  href={pullRequest.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open PR #${pullRequest.prNumber} on GitHub`}
+                >
+                  PR #{pullRequest.prNumber} {pullRequest.status}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+              <div className="flex flex-wrap justify-end gap-1">
+                <span
+                  className={cn(
+                    "rounded border px-2 py-0.5 text-[11px] font-medium",
+                    getReviewStatusClasses(pullRequest.reviewState),
+                  )}
+                >
+                  Review: {humanizePullRequestStatus(pullRequest.reviewState)}
+                </span>
+                <span
+                  className={cn(
+                    "rounded border px-2 py-0.5 text-[11px] font-medium",
+                    getChecksStatusClasses(pullRequest.checksState, pullRequest.checksConclusion),
+                  )}
+                >
+                  Checks: {formatChecksStatus(pullRequest.checksState, pullRequest.checksConclusion)}
+                </span>
+              </div>
+            </div>
           ) : null}
         </div>
         {titleError ? <p className="mt-1 text-xs text-destructive">{titleError}</p> : null}
