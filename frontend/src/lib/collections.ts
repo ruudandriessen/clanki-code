@@ -40,6 +40,11 @@ const pullRequestSchema = z.object({
   merged_at: z.bigint().nullable(),
   ready_at: z.bigint().nullable(),
   state: z.string().optional(),
+  review_state: z.string().nullable().optional(),
+  review_updated_at: z.bigint().nullable().optional(),
+  checks_state: z.string().nullable().optional(),
+  checks_conclusion: z.string().nullable().optional(),
+  checks_updated_at: z.bigint().nullable().optional(),
 });
 
 const taskMessageSchema = z.object({
