@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery, eq } from "@tanstack/react-db";
-import { stream } from "@durable-streams/client";
 import {
   AlertCircle,
   Check,
@@ -27,8 +26,8 @@ import {
   parseOpenCodeEventPayload,
   type TaskStreamEvent,
 } from "../../../shared/task-stream-events";
-import { getTaskEventStreamUrl } from "../lib/api";
 import { taskMessagesCollection, tasksCollection } from "../lib/collections";
+import { useTaskEventStream } from "../lib/use-task-event-stream";
 
 function CollapsedActivityGroup({ items }: { items: TaskStreamActivityItem[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -62,6 +61,7 @@ function CollapsedActivityGroup({ items }: { items: TaskStreamActivityItem[] }) 
 interface TaskPageProps {
   taskId: string;
   projectName: string;
+  streamId: string | null;
   branch: string | null;
   pullRequest: {
     prNumber: number;
@@ -90,6 +90,7 @@ export function TaskPage({
   taskId,
   title,
   projectName,
+  streamId,
   branch,
   pullRequest,
   error,
@@ -97,7 +98,7 @@ export function TaskPage({
 }: TaskPageProps) {
   const [input, setInput] = useSessionState(sessionStateKeys.taskInput(taskId), "");
   const [sending, setSending] = useState(false);
-  const [runEvents, setRunEvents] = useState<TaskStreamEvent[]>([]);
+  const runEvents = useTaskEventStream({ taskId, streamId });
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -136,40 +137,6 @@ export function TaskPage({
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, [taskId]);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    const seenEventIds = new Set<string>();
-
-    const applyEvent = (event: TaskStreamEvent) => {
-      if (seenEventIds.has(event.id)) {
-        return;
-      }
-      seenEventIds.add(event.id);
-
-      setRunEvents((prev) => [...prev, event]);
-    };
-
-    const streamUrl = getTaskEventStreamUrl(taskId);
-
-    stream<TaskStreamEvent>({
-      url: streamUrl,
-      offset: "-1",
-      live: "sse",
-      json: true,
-      signal: abortController.signal,
-    }).then((res) => {
-      res.subscribeJson(({ items }) => {
-        for (const event of items) {
-          applyEvent(event);
-        }
-      });
-    });
-
-    return () => {
-      abortController.abort();
-    };
   }, [taskId]);
 
   useEffect(() => {

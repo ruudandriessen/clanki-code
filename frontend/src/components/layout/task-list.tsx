@@ -42,6 +42,7 @@ export function TaskList() {
         project_id: defaultProject.id,
         title: "New task",
         status: "open",
+        stream_id: null,
         branch: null,
         error: null,
         created_at: BigInt(now),
