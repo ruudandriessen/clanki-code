@@ -1,6 +1,6 @@
 import { Navigate, createFileRoute } from "@tanstack/react-router";
 import { TaskPage } from "@/pages/task-page";
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { and, eq, useLiveQuery } from "@tanstack/react-db";
 import {
   projectsCollection,
   pullRequestsCollection,
@@ -55,13 +55,18 @@ export const Route = createFileRoute("/_layout/tasks/$taskId")({
     );
     const openedTask = taskRows[0];
     const taskBranch = openedTask?.task.branch ?? null;
+    const taskRepository = openedTask?.project?.repo_url ?? null;
     const { data: pullRequestMatches } = useLiveQuery(
       (q) =>
         q
           .from({ pr: pullRequestsCollection })
-          .where(({ pr }) => (taskBranch ? eq(pr.branch, taskBranch) : eq(pr.id, "")))
+          .where(({ pr }) =>
+            taskBranch && taskRepository
+              ? and(eq(pr.branch, taskBranch), eq(pr.repository, taskRepository))
+              : eq(pr.id, ""),
+          )
           .orderBy(({ pr }) => pr.opened_at, "desc"),
-      [taskBranch],
+      [taskBranch, taskRepository],
     );
 
     const pullRequest = pullRequestMatches[0];
