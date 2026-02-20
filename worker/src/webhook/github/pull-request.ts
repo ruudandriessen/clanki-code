@@ -88,6 +88,21 @@ export async function handlePullRequest(
       break;
     }
 
+    case "converted_to_draft": {
+      console.log(`PR #${pr.number} converted to draft: ${pr.title}`);
+      await db
+        .update(pullRequests)
+        .set({
+          branch,
+          readyAt: null,
+          state: "draft",
+          mergedAt: null,
+          mergedBy: null,
+        })
+        .where(pullRequestWhere);
+      break;
+    }
+
     case "reopened": {
       console.log(`PR #${pr.number} reopened: ${pr.title}`);
       await db
