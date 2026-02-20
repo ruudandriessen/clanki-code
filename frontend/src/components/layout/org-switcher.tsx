@@ -24,7 +24,7 @@ export function OrgSwitcher() {
   if (activeOrg.isPending) {
     return (
       <div className="border-b border-border px-3 py-3">
-        <div className="flex h-8 items-center gap-2 px-2.5 py-1.5">
+        <div className="flex h-6 items-center gap-2 px-2.5">
           <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           <span className="h-3.5 w-28 animate-pulse rounded bg-muted" aria-hidden />
         </div>
@@ -68,7 +68,7 @@ export function OrgSwitcher() {
               if (e.key === "Escape") setEditing(false);
             }}
             onBlur={handleSave}
-            className="h-7 flex-1 min-w-0 px-2"
+            className="h-6 flex-1 min-w-0 px-2"
           />
           <Button
             type="button"
@@ -94,7 +94,7 @@ export function OrgSwitcher() {
           setName(org.name);
           setEditing(true);
         }}
-        className="group h-auto w-full justify-start gap-2 px-2.5 py-1.5 text-sm text-foreground shadow-none hover:border-transparent hover:bg-accent/70 hover:shadow-none"
+        className="group h-6 w-full justify-start gap-2 px-2.5 py-0 text-sm text-foreground shadow-none hover:border-transparent hover:bg-accent/70 hover:shadow-none"
       >
         <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         <span className="truncate font-medium">{org.name}</span>
