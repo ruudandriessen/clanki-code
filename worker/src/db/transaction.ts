@@ -29,11 +29,6 @@ async function getTxId(tx: Tx): Promise<number> {
   return parsedTxid;
 }
 
-export function withTxid(response: Response, txid: number): Response {
-  response.headers.set("x-electric-txid", String(txid));
-  return response;
-}
-
 export async function withTransaction<T>(
   db: AppDb,
   callback: (tx: Tx, txid: number) => Promise<T>,
