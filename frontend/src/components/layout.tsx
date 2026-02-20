@@ -23,6 +23,27 @@ export function Layout() {
     setSidebarOpen(false);
   }, [pathname]);
 
+  // On iOS, interactive-widget=resizes-content doesn't reliably resize the layout
+  // viewport when the virtual keyboard opens. Use visualViewport.height as the
+  // source of truth so the layout always fits above the keyboard.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    function updateHeight() {
+      document.documentElement.style.setProperty("--app-height", `${viewport!.height}px`);
+    }
+
+    viewport.addEventListener("resize", updateHeight);
+    viewport.addEventListener("scroll", updateHeight);
+    updateHeight();
+
+    return () => {
+      viewport.removeEventListener("resize", updateHeight);
+      viewport.removeEventListener("scroll", updateHeight);
+    };
+  }, []);
+
   if (isPending) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -34,7 +55,10 @@ export function Layout() {
   if (!session) return null;
 
   return (
-    <div className="neo-enter flex h-dvh bg-background text-foreground">
+    <div
+      className="neo-enter flex bg-background text-foreground"
+      style={{ height: "var(--app-height, 100dvh)" }}
+    >
       {/* Mobile backdrop */}
       <div
         className={cn(
