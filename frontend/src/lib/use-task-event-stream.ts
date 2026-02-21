@@ -95,14 +95,6 @@ function extractBatchOffset(value: unknown): string | null {
   return null;
 }
 
-function isLikelyDurableStreamOffset(value: string): boolean {
-  if (value === "-1" || value === "now") {
-    return true;
-  }
-
-  return value.includes("_");
-}
-
 interface UseTaskEventStreamArgs {
   taskId: string;
   streamId: string | null;
@@ -128,10 +120,6 @@ export function useTaskEventStream(args: UseTaskEventStreamArgs): TaskStreamEven
       }
 
       let latestOffset = persisted.offset;
-      if (latestOffset !== null && !isLikelyDurableStreamOffset(latestOffset)) {
-        latestOffset = null;
-        void writeTaskStreamCache(storageKey, null, persisted.events);
-      }
       setRunEvents(trimPersistedEvents(persisted.events));
 
       try {
@@ -151,7 +139,7 @@ export function useTaskEventStream(args: UseTaskEventStreamArgs): TaskStreamEven
         res.subscribeJson((batch) => {
           const items = extractBatchItems(batch);
           const batchOffset = extractBatchOffset(batch);
-          if (batchOffset !== null && isLikelyDurableStreamOffset(batchOffset)) {
+          if (batchOffset !== null) {
             latestOffset = batchOffset;
           }
 

@@ -1,13 +1,14 @@
 import type { TaskStreamEvent } from "../../../shared/task-stream-events";
 
-const DB_NAME = "task-event-stream-cache";
+// Bump this to intentionally invalidate all previously persisted stream cache.
+const CACHE_EPOCH = 1;
+const DB_NAME = `task-event-stream-cache-${CACHE_EPOCH}`;
 const DB_VERSION = 1;
 const STORE_NAME = "streams";
 
 type TaskStreamCacheRecord = {
   key: string;
-  offset?: string | null;
-  cursor?: string | null;
+  offset: string | null;
   events: TaskStreamEvent[];
   updatedAt: number;
 };
@@ -92,11 +93,7 @@ export async function readTaskStreamCache(key: string): Promise<TaskStreamCacheS
 
         resolve({
           offset:
-            typeof record.offset === "string" && record.offset.length > 0
-              ? record.offset
-              : typeof record.cursor === "string" && record.cursor.length > 0
-                ? record.cursor
-                : null,
+            typeof record.offset === "string" && record.offset.length > 0 ? record.offset : null,
           events: parseTaskStreamEvents(record.events),
         });
       };
