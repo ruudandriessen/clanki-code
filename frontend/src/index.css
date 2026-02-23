@@ -147,6 +147,56 @@ h6 {
   }
 }
 
+@layer components {
+  .ai-markdown {
+    @apply break-words text-sm leading-relaxed;
+  }
+
+  .ai-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .ai-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .ai-markdown p {
+    @apply my-2;
+  }
+
+  .ai-markdown ul {
+    @apply my-2 list-disc pl-5;
+  }
+
+  .ai-markdown ol {
+    @apply my-2 list-decimal pl-5;
+  }
+
+  .ai-markdown li {
+    @apply my-1;
+  }
+
+  .ai-markdown pre {
+    @apply my-3 overflow-x-auto rounded-[var(--radius-sm)] border border-border/60 bg-muted/35 p-3 text-xs;
+  }
+
+  .ai-markdown code {
+    @apply rounded-[2px] bg-muted/60 px-1 py-0.5 text-[0.85em];
+  }
+
+  .ai-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .ai-markdown blockquote {
+    @apply my-3 border-l-2 border-border/60 pl-3 text-muted-foreground;
+  }
+
+  .ai-markdown a {
+    @apply underline decoration-border underline-offset-2 hover:text-primary;
+  }
+}
+
 @keyframes neo-enter {
   from {
     opacity: 0;
