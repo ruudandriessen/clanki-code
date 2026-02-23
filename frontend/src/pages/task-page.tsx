@@ -16,6 +16,7 @@ import {
   type TaskStreamActivityIcon,
   type TaskStreamActivityItem,
 } from "@/components/task-stream-activity";
+import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -475,23 +476,28 @@ export function TaskPage({
                     key={entry.id}
                     className="max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 p-4"
                   >
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-                      {entry.content}
-                    </div>
+                    <MarkdownContent content={entry.content} className="text-foreground" />
                   </div>
                 );
               }
 
+              const isUserMessage = entry.role === "user";
               return (
-                <div key={entry.id} className={entry.role === "user" ? "flex justify-end" : ""}>
+                <div key={entry.id} className={isUserMessage ? "flex justify-end" : ""}>
                   <div
-                    className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                      entry.role === "user"
+                    className={`${
+                      isUserMessage
                         ? "w-fit rounded-[var(--radius-md)] border border-border/60 bg-primary/95 px-4 py-2.5 text-primary-foreground"
                         : "max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 px-4 py-2.5 text-foreground"
                     }`}
                   >
-                    {entry.content}
+                    {isUserMessage ? (
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {entry.content}
+                      </div>
+                    ) : (
+                      <MarkdownContent content={entry.content} />
+                    )}
                   </div>
                 </div>
               );
