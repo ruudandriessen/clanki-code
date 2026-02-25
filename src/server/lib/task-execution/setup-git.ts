@@ -73,7 +73,27 @@ export async function runSetupScript(args: {
     return;
   }
 
-  const result = await args.sandbox.exec(normalizedCommand, { cwd: args.repoDir });
+  const commandNeedsBun = /\bbun\b/.test(normalizedCommand);
+  const commandToRun = commandNeedsBun
+    ? [buildBunPathCommand(), normalizedCommand].join(" && ")
+    : normalizedCommand;
+
+  if (commandNeedsBun) {
+    const installBunResult = await args.sandbox.exec(buildInstallBunCommand(), {
+      cwd: args.repoDir,
+    });
+    if (!installBunResult.success) {
+      throw new Error(
+        formatBunInstallFailure({
+          exitCode: installBunResult.exitCode,
+          stdout: installBunResult.stdout,
+          stderr: installBunResult.stderr,
+        }),
+      );
+    }
+  }
+
+  const result = await args.sandbox.exec(commandToRun, { cwd: args.repoDir });
   if (!result.success) {
     throw new Error(
       formatSetupCommandFailure({
@@ -89,6 +109,17 @@ export async function runSetupScript(args: {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function buildBunPathCommand(): string {
+  return 'export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH"';
+}
+
+function buildInstallBunCommand(): string {
+  return [
+    buildBunPathCommand(),
+    "if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; fi",
+  ].join(" && ");
+}
 
 function resolveGitIdentity(args: { userId: string; userName: string; userEmail: string }): {
   name: string;
@@ -140,4 +171,21 @@ function formatSetupCommandFailure(args: {
   }
 
   return `Project setup command failed (exit code ${args.exitCode}): ${args.command}\n${output}`;
+}
+
+function formatBunInstallFailure(args: {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}): string {
+  const stdout = truncateCommandOutput(args.stdout.trim());
+  const stderr = truncateCommandOutput(args.stderr.trim());
+  const output = [stderr, stdout].filter((part) => part.length > 0).join("\n\n");
+  const base = `Failed to install Bun before running setup command (exit code ${args.exitCode})`;
+
+  if (output.length === 0) {
+    return base;
+  }
+
+  return `${base}\n${output}`;
 }
