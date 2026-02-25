@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
-import { CircleAlert, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
+import {
+  CheckCheck,
+  CircleAlert,
+  GitPullRequest,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -78,6 +86,21 @@ function getSidebarGroupKey(params: {
   }
 
   return "awaitingReview";
+}
+
+function renderGroupIcon(group: TaskSidebarGroup) {
+  switch (group) {
+    case "merged":
+      return <CheckCheck className="w-3 h-3" />;
+    case "needsAction":
+      return <CircleAlert className="w-3 h-3 text-destructive" />;
+    case "openNoPr":
+      return <MessageSquare className="w-3 h-3" />;
+    case "awaitingReview":
+      return <GitPullRequest className="w-3 h-3" />;
+    case "running":
+      return <Loader2 className="w-3 h-3 animate-spin" />;
+  }
 }
 
 export function TaskList() {
@@ -228,8 +251,9 @@ export function TaskList() {
 
           return (
             <div key={group.key} className="space-y-1">
-              <p className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground/90 uppercase tracking-[0.08em]">
-                {group.label}
+              <p className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-muted-foreground/90 uppercase tracking-[0.08em]">
+                {renderGroupIcon(group.key)}
+                <span>{group.label}</span>
               </p>
               {isSidebarLoading
                 ? Array.from({ length: 2 }).map((_, index) => (
@@ -251,7 +275,6 @@ export function TaskList() {
                       : null;
                     const taskLabel = task.branch ?? task.title;
                     const secondaryLabel = projectName ?? null;
-                    const hasError = (task.error?.trim().length ?? 0) > 0;
 
                     const shouldSkipDeleteConfirmation = group.key === "merged";
 
@@ -268,15 +291,8 @@ export function TaskList() {
                         <Link
                           to="/tasks/$taskId"
                           params={{ taskId: task.id }}
-                          className="flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-sm"
+                          className="flex min-w-0 flex-1 px-2.5 py-2 text-sm"
                         >
-                          {hasError ? (
-                            <CircleAlert className="mt-0.5 w-3.5 h-3.5 shrink-0 text-destructive" />
-                          ) : task.status === "running" ? (
-                            <Loader2 className="mt-0.5 w-3.5 h-3.5 shrink-0 animate-spin" />
-                          ) : (
-                            <MessageSquare className="mt-0.5 w-3.5 h-3.5 shrink-0" />
-                          )}
                           <div className="min-w-0 flex-1">
                             <p className="truncate">{taskLabel}</p>
                             {secondaryLabel ? (
