@@ -41,6 +41,12 @@ Every React component must live in its own file. Do not define multiple componen
 
 Split reusable functions into dedicated files instead of grouping many unrelated functions in one file. Keep files focused on a single concern, and prefer extracting helper functions once they are shared across modules or grow beyond small local logic.
 
+### Keep configuration surface minimal
+
+Do not introduce new environment variables, feature flags, or configuration options unless explicitly requested by the user/product requirement.
+
+Prefer sensible defaults and direct implementation over optional knobs. If configurability is needed later, add it in a follow-up change when requested.
+
 ### React Compiler: avoid manual memoization by default
 
 This project uses the React Compiler. Do not add `useMemo`/`useCallback` for routine derived values or inline handlers unless there is a specific non-compiler reason.

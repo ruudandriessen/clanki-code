@@ -1,10 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { createOpencodeClient, OpencodeClient, type Config } from "@opencode-ai/sdk";
-import { Sandbox as VercelSandbox } from "@vercel/sandbox";
+import { Sandbox as VercelSandbox, Snapshot } from "@vercel/sandbox";
 // oxlint-disable-next-line import/default
 import taskRunnerSource from "../../../sandbox/task-runner.mjs?raw";
 
 const SANDBOX_TIMEOUT_MS_DEFAULT = 15 * 60 * 1000;
+const SANDBOX_BASE_VERSION_DEFAULT = "base-v1";
+const SANDBOX_SNAPSHOT_LIST_LIMIT = 20;
+const SANDBOX_BASE_VERSION_MARKER_PATH = "/vercel/sandbox/.clanki-base-snapshot-version";
 const OPENCODE_PORT = 4096;
 const TASK_RUNNER_PATH = "/vercel/sandbox/task-runner.mjs";
 const GITHUB_CLI_INSTALL_SCRIPT = `
@@ -89,6 +92,7 @@ export type TaskSandbox = {
 
 export type SandboxEnv = {
   VERCEL_SANDBOX_TIMEOUT_MS?: string;
+  VERCEL_SANDBOX_BASE_VERSION?: string;
 };
 
 class VercelTaskSandbox implements TaskSandbox {
@@ -186,7 +190,7 @@ class VercelTaskSandbox implements TaskSandbox {
     await this.#waitForOpencodeReady();
   }
 
-  async ensureBaseTooling(): Promise<void> {
+  async ensureBaseToolingForVersion(baseVersion: string): Promise<void> {
     await this.#ensureTaskRunnerScript();
     await this.#ensureBun();
 
@@ -200,6 +204,43 @@ class VercelTaskSandbox implements TaskSandbox {
     }
 
     await this.#ensureGithubCli();
+
+    const bunCheck = await this.exec(
+      '[ -x "$HOME/.bun/bin/bun" ] || command -v bun >/dev/null 2>&1',
+    );
+    if (!bunCheck.success) {
+      const install = await this.exec(buildInstallBunCommand());
+      if (!install.success) {
+        console.warn("Failed to install Bun in sandbox", {
+          stderr: install.stderr || install.stdout || "unknown error",
+        });
+      }
+    }
+
+    const currentVersion = await this.readBaseVersion();
+    if (currentVersion !== baseVersion) {
+      await this.#sandbox.writeFiles([
+        {
+          path: SANDBOX_BASE_VERSION_MARKER_PATH,
+          content: Buffer.from(`${baseVersion}\n`, "utf8"),
+        },
+      ]);
+    }
+  }
+
+  async readBaseVersion(): Promise<string | null> {
+    const markerFile = await this.exists(SANDBOX_BASE_VERSION_MARKER_PATH);
+    if (!markerFile.exists) {
+      return null;
+    }
+
+    try {
+      const marker = await this.readFile(SANDBOX_BASE_VERSION_MARKER_PATH);
+      const version = marker.content.trim();
+      return version.length > 0 ? version : null;
+    } catch {
+      return null;
+    }
   }
 
   async #ensureTaskRunnerScript(): Promise<void> {
@@ -380,15 +421,12 @@ export async function getTaskSandbox(
   }
 
   if (!sandbox) {
-    sandbox = await VercelSandbox.create({
-      ports: [OPENCODE_PORT],
-      runtime: "node24",
-      timeout: resolveSandboxTimeout(env),
-    });
+    sandbox = await createSandboxWithSnapshotBootstrap(env);
   }
 
   const client = new VercelTaskSandbox(sandbox);
-  await client.ensureBaseTooling();
+  const baseVersion = resolveSandboxBaseVersion(env);
+  await client.ensureBaseToolingForVersion(baseVersion);
   return client;
 }
 
@@ -426,6 +464,156 @@ function resolveSandboxTimeout(env: SandboxEnv): number {
   return Math.trunc(parsed);
 }
 
+async function createSandboxWithSnapshotBootstrap(env: SandboxEnv): Promise<VercelSandbox> {
+  const timeout = resolveSandboxTimeout(env);
+  const baseVersion = resolveSandboxBaseVersion(env);
+
+  const latestSnapshotId = await resolveLatestSnapshotId();
+  if (!latestSnapshotId) {
+    return await createSandboxFromFreshBaseSnapshot({ timeout, baseVersion });
+  }
+
+  const fromSnapshot = await tryCreateSandboxFromSnapshot(latestSnapshotId, timeout);
+  if (!fromSnapshot) {
+    return await createSandboxFromFreshBaseSnapshot({ timeout, baseVersion });
+  }
+
+  const snapshotClient = new VercelTaskSandbox(fromSnapshot);
+  const snapshotBaseVersion = await snapshotClient.readBaseVersion();
+  if (snapshotBaseVersion === baseVersion) {
+    return fromSnapshot;
+  }
+
+  await stopSandboxQuietly(fromSnapshot);
+  console.info("Base snapshot version changed; rebuilding base snapshot", {
+    currentVersion: snapshotBaseVersion ?? null,
+    expectedVersion: baseVersion,
+  });
+  return await createSandboxFromFreshBaseSnapshot({ timeout, baseVersion });
+}
+
+async function createSandboxFromFreshBaseSnapshot(args: {
+  timeout: number;
+  baseVersion: string;
+}): Promise<VercelSandbox> {
+  const { timeout, baseVersion } = args;
+  const builder = await createFreshSandbox(timeout);
+  const builderClient = new VercelTaskSandbox(builder);
+
+  try {
+    await builderClient.ensureBaseToolingForVersion(baseVersion);
+    const snapshot = await builder.snapshot();
+    const snapshotId = snapshot.snapshotId;
+    console.info("Created new base sandbox snapshot", {
+      snapshotId,
+      baseVersion,
+    });
+
+    const runtime = await tryCreateSandboxFromSnapshot(snapshotId, timeout);
+    if (runtime) {
+      return runtime;
+    }
+
+    console.warn(
+      "Snapshot was created but runtime sandbox creation from snapshot failed; using cold sandbox",
+      {
+        snapshotId,
+      },
+    );
+  } catch (error) {
+    await stopSandboxQuietly(builder);
+    console.warn("Failed to build base sandbox snapshot; using cold sandbox", {
+      message: getErrorMessage(error),
+    });
+  }
+
+  const runtime = await createFreshSandbox(timeout);
+  const runtimeClient = new VercelTaskSandbox(runtime);
+  await runtimeClient.ensureBaseToolingForVersion(baseVersion);
+  return runtime;
+}
+
+async function createFreshSandbox(timeout: number): Promise<VercelSandbox> {
+  return await VercelSandbox.create({
+    ports: [OPENCODE_PORT],
+    runtime: "node24",
+    timeout,
+  });
+}
+
+async function tryCreateSandboxFromSnapshot(
+  snapshotId: string,
+  timeout: number,
+): Promise<VercelSandbox | null> {
+  try {
+    return await VercelSandbox.create({
+      ports: [OPENCODE_PORT],
+      timeout,
+      source: {
+        type: "snapshot",
+        snapshotId,
+      },
+    });
+  } catch (error) {
+    console.warn("Failed to create sandbox from snapshot", {
+      snapshotId,
+      message: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
+async function resolveLatestSnapshotId(): Promise<string | null> {
+  try {
+    const listed = await Snapshot.list({ limit: SANDBOX_SNAPSHOT_LIST_LIMIT });
+    const now = Date.now();
+    const snapshots = listed.json.snapshots
+      .filter((snapshot) => snapshot.status === "created")
+      .filter((snapshot) => snapshot.expiresAt === undefined || snapshot.expiresAt > now)
+      .toSorted((a, b) => b.createdAt - a.createdAt);
+
+    const latest = snapshots[0];
+    if (!latest) {
+      return null;
+    }
+
+    return latest.id;
+  } catch (error) {
+    console.warn("Failed to list sandbox snapshots", {
+      message: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
+async function stopSandboxQuietly(sandbox: VercelSandbox): Promise<void> {
+  try {
+    await sandbox.stop();
+  } catch {}
+}
+
+function resolveSandboxBaseVersion(env: SandboxEnv): string {
+  const configuredBaseVersion = normalizeOptionalValue(env.VERCEL_SANDBOX_BASE_VERSION);
+  return configuredBaseVersion ?? SANDBOX_BASE_VERSION_DEFAULT;
+}
+
+function normalizeOptionalValue(value: string | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `"'"'`)}'`;
 }
@@ -436,3 +624,11 @@ function normalizeCommandFailureMessage(value: string): string {
 }
 
 export const TASK_RUNNER_COMMAND = `node ${TASK_RUNNER_PATH}`;
+
+function buildInstallBunCommand(): string {
+  return [
+    'export BUN_INSTALL="$HOME/.bun"',
+    'export PATH="$BUN_INSTALL/bin:$PATH"',
+    'if ! command -v bun >/dev/null 2>&1 && [ ! -x "$HOME/.bun/bin/bun" ]; then curl -fsSL https://bun.sh/install | bash; fi',
+  ].join(" && ");
+}
