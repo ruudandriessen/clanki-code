@@ -28,22 +28,31 @@ export async function connectAssistant(args: {
     model: toProviderModelRef(provider, model),
   });
 
-  await client.auth.set({
+  const authSetResponse = await client.auth.set({
     path: { id: provider },
     body: providerAuth,
   });
+  if (!authSetResponse.response.ok) {
+    const statusText = authSetResponse.response.statusText.trim();
+    const statusInfo =
+      statusText.length > 0
+        ? `${authSetResponse.response.status} ${statusText}`
+        : String(authSetResponse.response.status);
+    throw new Error(`Failed to configure OpenCode provider auth (${statusInfo})`);
+  }
 
   return { client };
 }
 
 export async function ensureSession(args: {
   client: Awaited<ReturnType<typeof getOpenCodeClient>>["client"];
+  directory: string;
   db: AppDb;
   taskId: string;
   taskTitle: string;
   sandboxId: string;
 }): Promise<{ sessionId: string; isNewSession: boolean }> {
-  const { client, db, taskId, taskTitle, sandboxId } = args;
+  const { client, directory, db, taskId, taskTitle, sandboxId } = args;
 
   const task = await db.query.tasks.findFirst({
     where: eq(schema.tasks.id, taskId),
@@ -52,9 +61,13 @@ export async function ensureSession(args: {
 
   let sessionId = task?.sessionId ?? null;
   let isNewSession = false;
+
   if (sessionId) {
     try {
-      const existing = await client.session.get({ path: { id: sessionId } });
+      const existing = await client.session.get({
+        path: { id: sessionId },
+        query: { directory },
+      });
       if (!existing.data) {
         sessionId = null;
       }
@@ -64,13 +77,21 @@ export async function ensureSession(args: {
   }
 
   if (!sessionId) {
-    const { data: session } = await client.session.create({
+    const createResponse = await client.session.create({
+      query: { directory },
       body: { title: taskTitle },
     });
-    sessionId = session?.id ?? null;
-    if (!sessionId) {
-      throw new Error("Failed to create OpenCode session");
+
+    if (!createResponse.response.ok || !createResponse.data?.id) {
+      const statusText = createResponse.response.statusText.trim();
+      const statusInfo =
+        statusText.length > 0
+          ? `${createResponse.response.status} ${statusText}`
+          : String(createResponse.response.status);
+      throw new Error(`Failed to create OpenCode session (${statusInfo})`);
     }
+
+    sessionId = createResponse.data.id;
     isNewSession = true;
   }
 
