@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createAuth } from "./auth";
 import { getDb } from "./db/client";
 import { getEnv } from "./env";
+import { toSessionErrorResponse } from "./session-error-response";
 
 export type SessionContext = {
   session: { userId: string; activeOrganizationId?: string | null };
@@ -13,10 +14,15 @@ export const authMiddleware = createMiddleware().server(async ({ next }) => {
   const request = getRequest();
   const env = getEnv();
   const auth = createAuth(env, request);
-  const result = await auth.api.getSession({ headers: request.headers });
+  let result: Awaited<ReturnType<typeof auth.api.getSession>>;
+  try {
+    result = await auth.api.getSession({ headers: request.headers });
+  } catch (error) {
+    throw toSessionErrorResponse(error);
+  }
 
   if (!result) {
-    throw new Error("Unauthorized");
+    throw new Response("Unauthorized", { status: 401 });
   }
 
   const session: SessionContext = {
