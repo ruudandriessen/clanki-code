@@ -4,6 +4,8 @@ import { getDb } from "@/server/db/client";
 import { getEnv } from "@/server/env";
 import { handleCheckRun } from "@/server/webhook/github/check-run";
 import { handleCheckSuite } from "@/server/webhook/github/check-suite";
+import { handleDeployment } from "@/server/webhook/github/deployment";
+import { handleDeploymentStatus } from "@/server/webhook/github/deployment-status";
 import { handleInstallation } from "@/server/webhook/github/installation";
 import { handlePing } from "@/server/webhook/github/ping";
 import { handlePullRequest } from "@/server/webhook/github/pull-request";
@@ -26,6 +28,14 @@ function createWebhooks(secret: string, db: ReturnType<typeof getDb>): Webhooks 
 
   webhooks.on("check_run", async (event) => {
     await handleCheckRun(event, db);
+  });
+
+  webhooks.on("deployment", async (event) => {
+    await handleDeployment(event);
+  });
+
+  webhooks.on("deployment_status", async (event) => {
+    await handleDeploymentStatus(event);
   });
 
   webhooks.on("installation", async (event) => {

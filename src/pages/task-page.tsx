@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery, eq } from "@tanstack/react-db";
 import { AlertCircle, ChevronRight, ExternalLink, Loader2, Send, Wrench } from "lucide-react";
 import {
+  DeploymentPreviewPane,
+  type DeploymentPreviewItem,
+} from "@/components/deployment-preview-pane";
+import {
   TaskStreamActivity,
   type TaskStreamActivityIcon,
   type TaskStreamActivityItem,
@@ -10,6 +14,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sessionStateKeys, useSessionState } from "@/lib/session-state";
+import { fetchTaskDeployments } from "@/server/functions/deployments";
 import { cn } from "@/lib/utils";
 import type { Event as OpenCodeEvent } from "@opencode-ai/sdk";
 import { taskMessagesCollection, tasksCollection } from "../lib/collections";
@@ -22,6 +27,7 @@ import {
 } from "@/shared/task-stream-events";
 
 const CREATE_PR_MESSAGE = "Create a PR for me";
+type TaskViewMode = "chat" | "preview";
 
 function CollapsedActivityGroup({ items }: { items: TaskStreamActivityItem[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -153,6 +159,11 @@ export function TaskPage({
   const displayTitle = branchName ?? title;
   const [input, setInput] = useSessionState(sessionStateKeys.taskInput(taskId), "");
   const [sending, setSending] = useState(false);
+  const [viewMode, setViewMode] = useState<TaskViewMode>("chat");
+  const [deployments, setDeployments] = useState<DeploymentPreviewItem[]>([]);
+  const [loadingDeployments, setLoadingDeployments] = useState(false);
+  const [deploymentsError, setDeploymentsError] = useState<string | null>(null);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<number | null>(null);
   const runEvents = useTaskEventStream({ taskId, streamId });
   const [now, setNow] = useState(() => Date.now());
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -196,6 +207,14 @@ export function TaskPage({
   }, [taskId]);
 
   useEffect(() => {
+    setViewMode("chat");
+    setDeployments([]);
+    setSelectedDeploymentId(null);
+    setDeploymentsError(null);
+    setLoadingDeployments(false);
+  }, [taskId]);
+
+  useEffect(() => {
     if (isLoading || messages.length > 0) {
       return;
     }
@@ -216,6 +235,47 @@ export function TaskPage({
       globalThis.clearInterval(timerId);
     };
   }, [isRunning]);
+
+  async function loadDeployments() {
+    setLoadingDeployments(true);
+    setDeploymentsError(null);
+
+    try {
+      const nextDeployments = await fetchTaskDeployments({ data: { taskId } });
+      setDeployments(nextDeployments);
+      setSelectedDeploymentId((current) => {
+        const hasCurrent =
+          current !== null && nextDeployments.some((deployment) => deployment.id === current);
+        if (hasCurrent) {
+          return current;
+        }
+
+        const defaultDeployment =
+          nextDeployments.find((deployment) => deployment.previewUrl !== null) ??
+          nextDeployments[0];
+
+        return defaultDeployment?.id ?? null;
+      });
+    } catch (error) {
+      setDeploymentsError(
+        error instanceof Error ? error.message : "Failed to load deployment previews",
+      );
+    } finally {
+      setLoadingDeployments(false);
+    }
+  }
+
+  async function handleToggleViewMode() {
+    if (viewMode === "chat") {
+      setViewMode("preview");
+      if (deployments.length === 0 && !loadingDeployments) {
+        await loadDeployments();
+      }
+      return;
+    }
+
+    setViewMode("chat");
+  }
 
   async function handleSend(contentOverride?: string) {
     const content = (contentOverride ?? input).trim();
@@ -292,50 +352,62 @@ export function TaskPage({
               </div>
             </div>
           </div>
-          {pullRequest ? (
-            <div className="shrink-0 space-y-1 text-left md:flex md:items-center md:gap-2 md:space-y-0 md:text-right">
-              <Button
-                asChild
-                variant="outline"
-                size="xs"
-                className={getPullRequestButtonClasses(pullRequest.status)}
-              >
-                <a
-                  href={pullRequest.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={`Open PR #${pullRequest.prNumber} on GitHub`}
+          <div className="shrink-0 space-y-1 text-left md:flex md:items-center md:gap-2 md:space-y-0 md:text-right">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => void handleToggleViewMode()}
+            >
+              {viewMode === "chat" ? "Show preview" : "Show chat"}
+            </Button>
+
+            {pullRequest ? (
+              <>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="xs"
+                  className={getPullRequestButtonClasses(pullRequest.status)}
                 >
-                  PR #{pullRequest.prNumber} {pullRequest.status}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-              <div className="flex flex-wrap gap-1 md:flex-nowrap md:justify-end">
-                {pullRequest.reviewState != null ? (
-                  <span
-                    className={cn(
-                      "rounded border px-2 py-0.5 text-[11px] font-medium",
-                      getReviewStatusClasses(pullRequest.reviewState),
-                    )}
+                  <a
+                    href={pullRequest.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open PR #${pullRequest.prNumber} on GitHub`}
                   >
-                    Review: {humanizePullRequestStatus(pullRequest.reviewState)}
-                  </span>
-                ) : null}
-                {pullRequest.checksState != null || pullRequest.checksConclusion != null ? (
-                  <span
-                    className={cn(
-                      "rounded border px-2 py-0.5 text-[11px] font-medium",
-                      getChecksStatusClasses(pullRequest.checksState, pullRequest.checksConclusion),
-                    )}
-                  >
-                    Checks:{" "}
-                    {formatChecksStatus(pullRequest.checksState, pullRequest.checksConclusion)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          ) : branchName ? (
-            <div className="shrink-0 space-y-1 text-right">
+                    PR #{pullRequest.prNumber} {pullRequest.status}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+                <div className="flex flex-wrap gap-1 md:flex-nowrap md:justify-end">
+                  {pullRequest.reviewState != null ? (
+                    <span
+                      className={cn(
+                        "rounded border px-2 py-0.5 text-[11px] font-medium",
+                        getReviewStatusClasses(pullRequest.reviewState),
+                      )}
+                    >
+                      Review: {humanizePullRequestStatus(pullRequest.reviewState)}
+                    </span>
+                  ) : null}
+                  {pullRequest.checksState != null || pullRequest.checksConclusion != null ? (
+                    <span
+                      className={cn(
+                        "rounded border px-2 py-0.5 text-[11px] font-medium",
+                        getChecksStatusClasses(
+                          pullRequest.checksState,
+                          pullRequest.checksConclusion,
+                        ),
+                      )}
+                    >
+                      Checks:{" "}
+                      {formatChecksStatus(pullRequest.checksState, pullRequest.checksConclusion)}
+                    </span>
+                  ) : null}
+                </div>
+              </>
+            ) : branchName ? (
               <Button
                 type="button"
                 variant="outline"
@@ -345,8 +417,8 @@ export function TaskPage({
               >
                 Create a PR
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -359,108 +431,129 @@ export function TaskPage({
         </div>
       ) : null}
 
-      <div
-        ref={messageListRef}
-        onScroll={handleMessageListScroll}
-        className="neo-scroll flex-1 overflow-y-auto"
-      >
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
-        ) : showEmptyState ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
-            <p className="text-xs">Send a message to start an OpenCode run.</p>
-          </div>
-        ) : (
-          <div className="space-y-4 px-4 py-4 md:px-6">
-            {timelineEntries.map((entry) => {
-              if (entry.type === "activity") {
-                return <TaskStreamActivity key={entry.id} items={[entry.item]} />;
-              }
+      {viewMode === "chat" ? (
+        <>
+          <div
+            ref={messageListRef}
+            onScroll={handleMessageListScroll}
+            className="neo-scroll flex-1 overflow-y-auto"
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+            ) : showEmptyState ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-muted-foreground">
+                <p className="text-sm">No messages yet</p>
+                <p className="text-xs">Send a message to start an OpenCode run.</p>
+              </div>
+            ) : (
+              <div className="space-y-4 px-4 py-4 md:px-6">
+                {timelineEntries.map((entry) => {
+                  if (entry.type === "activity") {
+                    return <TaskStreamActivity key={entry.id} items={[entry.item]} />;
+                  }
 
-              if (entry.type === "activity-group") {
-                return <CollapsedActivityGroup key={entry.id} items={entry.items} />;
-              }
+                  if (entry.type === "activity-group") {
+                    return <CollapsedActivityGroup key={entry.id} items={entry.items} />;
+                  }
 
-              if (entry.type === "assistant-preview") {
-                return (
-                  <div
-                    key={entry.id}
-                    className="max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 p-4"
-                  >
-                    <MarkdownContent content={entry.content} className="text-foreground" />
-                  </div>
-                );
-              }
-
-              const isUserMessage = entry.role === "user";
-              return (
-                <div key={entry.id} className={isUserMessage ? "flex justify-end" : ""}>
-                  <div
-                    className={`${
-                      isUserMessage
-                        ? "w-fit rounded-[var(--radius-md)] border border-border/60 bg-primary/95 px-4 py-2.5 text-primary-foreground"
-                        : "max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 px-4 py-2.5 text-foreground"
-                    }`}
-                  >
-                    {isUserMessage ? (
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {entry.content}
+                  if (entry.type === "assistant-preview") {
+                    return (
+                      <div
+                        key={entry.id}
+                        className="max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 p-4"
+                      >
+                        <MarkdownContent content={entry.content} className="text-foreground" />
                       </div>
-                    ) : (
-                      <MarkdownContent content={entry.content} />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                    );
+                  }
 
-            {isRunning && (
-              <div className="flex items-center gap-2 py-1">
-                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]" />
-                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]" />
-                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" />
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {formatDuration(runningDurationMs ?? 0)}
-                </span>
+                  const isUserMessage = entry.role === "user";
+                  return (
+                    <div key={entry.id} className={isUserMessage ? "flex justify-end" : ""}>
+                      <div
+                        className={`${
+                          isUserMessage
+                            ? "w-fit rounded-[var(--radius-md)] border border-border/60 bg-primary/95 px-4 py-2.5 text-primary-foreground"
+                            : "max-w-3xl rounded-[var(--radius-md)] border border-border/70 bg-card/80 px-4 py-2.5 text-foreground"
+                        }`}
+                      >
+                        {isUserMessage ? (
+                          <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                            {entry.content}
+                          </div>
+                        ) : (
+                          <MarkdownContent content={entry.content} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {isRunning && (
+                  <div className="flex items-center gap-2 py-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" />
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {formatDuration(runningDurationMs ?? 0)}
+                    </span>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
-        )}
-      </div>
 
-      <div className="shrink-0 border-t border-border bg-card p-4">
-        <div className="flex items-end gap-2">
-          <Textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isRunning ? "Wait for the current run to finish..." : "Send a message..."}
-            rows={1}
-            disabled={isRunning || sending}
-            className="min-h-[42px] max-h-[200px] flex-1 resize-none rounded-[var(--radius-md)] px-4 py-2.5 text-base md:text-sm"
-            style={{ height: "auto" }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = "auto";
-              target.style.height = Math.min(target.scrollHeight, 200) + "px";
-            }}
+          <div className="shrink-0 border-t border-border bg-card p-4">
+            <div className="flex items-end gap-2">
+              <Textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  isRunning ? "Wait for the current run to finish..." : "Send a message..."
+                }
+                rows={1}
+                disabled={isRunning || sending}
+                className="min-h-[42px] max-h-[200px] flex-1 resize-none rounded-[var(--radius-md)] px-4 py-2.5 text-base md:text-sm"
+                style={{ height: "auto" }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = "auto";
+                  target.style.height = Math.min(target.scrollHeight, 200) + "px";
+                }}
+              />
+              <Button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={!input.trim() || sending || isRunning}
+                className="h-[42px] w-[42px] shrink-0 rounded-[var(--radius-md)] p-0"
+              >
+                {sending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="min-h-0 flex-1 p-4 md:p-6">
+          <DeploymentPreviewPane
+            deployments={deployments}
+            selectedDeploymentId={selectedDeploymentId}
+            loading={loadingDeployments}
+            loadingError={deploymentsError}
+            onSelectDeployment={setSelectedDeploymentId}
+            onRefresh={() => void loadDeployments()}
           />
-          <Button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={!input.trim() || sending || isRunning}
-            className="h-[42px] w-[42px] shrink-0 rounded-[var(--radius-md)] p-0"
-          >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
