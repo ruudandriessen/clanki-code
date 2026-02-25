@@ -65,6 +65,7 @@ interface TaskPageProps {
   taskId: string;
   projectName: string;
   streamId: string | null;
+  branchName: string | null;
   pullRequest: {
     prNumber: number;
     url: string;
@@ -151,12 +152,14 @@ function formatChecksStatus(checksState: string | null, checksConclusion: string
 export function TaskPage({
   taskId,
   title,
+  branchName,
   projectName,
   streamId,
   pullRequest,
   error,
   isRunning,
 }: TaskPageProps) {
+  const displayTitle = branchName ?? title;
   const [input, setInput] = useSessionState(sessionStateKeys.taskInput(taskId), "");
   const [sending, setSending] = useState(false);
   const runEvents = useTaskEventStream({ taskId, streamId });
@@ -402,7 +405,7 @@ export function TaskPage({
               <div className="min-w-0">
                 <div className="flex min-h-8 min-w-0 items-center gap-2">
                   <h2 className="m-0 truncate text-sm font-bold tracking-[0.04em] uppercase">
-                    {title}
+                    {displayTitle}
                   </h2>
                   <Button
                     type="button"
