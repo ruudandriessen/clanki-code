@@ -2,25 +2,26 @@
 
 import { appendFileSync } from "node:fs";
 import { execFile } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 
 /**
  * Autonomous task runner that executes inside an isolated sandbox VM.
  *
  * Reads configuration from TASK_* environment variables, then:
- * 1. Triggers a prompt on the local OpenCode server
- * 2. Reads SSE events from the local OpenCode event stream
- * 3. Appends events to Durable Streams (ElectricSQL)
- * 4. Sends heartbeats to the worker
- * 5. Reports local git branch changes to the worker
- * 6. Calls the worker on completion or failure
+ * 1. Reads SSE events from the local OpenCode event stream
+ * 2. Appends events to Durable Streams (ElectricSQL)
+ * 3. Sends heartbeats to the worker
+ * 4. Reports local git branch changes to the worker
+ * 5. Calls the worker on completion or failure
  */
 
 const OPENCODE_PORT = 4096;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const BRANCH_POLL_INTERVAL_MS = 5_000;
-const STREAM_COMPLETION_GRACE_MS = 15_000;
 const STREAM_CONNECTION_TIMEOUT_MS = 5_000;
+const SESSION_COMPLETION_TIMEOUT_MS = 30 * 60 * 1000;
+const SESSION_STATUS_POLL_INTERVAL_MS = 2_000;
 const DURABLE_STREAMS_BASE_URL = "https://api.electric-sql.cloud";
 const execFileAsync = promisify(execFile);
 
@@ -92,8 +93,6 @@ async function readResponseText(response) {
 }
 
 function readConfig() {
-  const isFirstMessage = optionalEnv("TASK_IS_FIRST_MESSAGE") === "1";
-
   return {
     workerUrl: requiredEnv("TASK_WORKER_URL"),
     callbackToken: requiredEnv("TASK_CALLBACK_TOKEN"),
@@ -101,22 +100,10 @@ function readConfig() {
     runId: requiredEnv("TASK_RUN_ID"),
     orgId: requiredEnv("TASK_ORG_ID"),
     sessionId: requiredEnv("TASK_SESSION_ID"),
-    isFirstMessage,
     repoDir: requiredEnv("TASK_REPO_DIR"),
-    prompt: requiredEnv("TASK_PROMPT"),
     dsServiceId: optionalEnv("TASK_DS_SERVICE_ID"),
     dsSecret: optionalEnv("TASK_DS_SECRET"),
   };
-}
-
-function buildPromptText(config) {
-  if (!config.isFirstMessage) {
-    return config.prompt;
-  }
-
-  const systemPrompt =
-    "System instruction: Before writing or changing any code, create a git branch based on the user message first.";
-  return `${systemPrompt}\n\nUser message:\n${config.prompt}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +593,63 @@ async function consumeEventStream(
   return false;
 }
 
+async function getSessionStatus(config) {
+  const query = new URLSearchParams({ directory: config.repoDir }).toString();
+  const response = await fetch(`http://localhost:${OPENCODE_PORT}/session/status?${query}`);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `OpenCode status failed: ${response.status} ${response.statusText}${body ? `: ${truncateText(body)}` : ""}`,
+    );
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const statusForSession = payload[config.sessionId];
+  if (statusForSession && typeof statusForSession === "object") {
+    return statusForSession;
+  }
+
+  return null;
+}
+
+function getSessionStatusType(status) {
+  if (!status || typeof status !== "object") {
+    return "unknown";
+  }
+
+  return typeof status.type === "string" ? status.type : "unknown";
+}
+
+async function waitForSessionIdle(config, timeoutMs = SESSION_COMPLETION_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatusType = "unknown";
+
+  while (Date.now() < deadline) {
+    try {
+      const status = await getSessionStatus(config);
+      const statusType = getSessionStatusType(status);
+      lastStatusType = statusType;
+      if (statusType === "idle") {
+        return;
+      }
+    } catch (error) {
+      logWarn(config, "failed to read session status", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    await sleep(SESSION_STATUS_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    `Timed out waiting for OpenCode session to become idle (last status: ${lastStatusType})`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -716,56 +760,30 @@ async function main() {
       });
     }
 
-    const promptQuery = new URLSearchParams({ directory: config.repoDir }).toString();
-    const promptText = buildPromptText(config);
-    const promptPromise = fetch(
-      `http://localhost:${OPENCODE_PORT}/session/${config.sessionId}/message?${promptQuery}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          parts: [{ type: "text", text: promptText }],
-        }),
-      },
-    ).then(async (response) => {
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(
-          `OpenCode prompt failed: ${response.status} ${response.statusText}${body ? `: ${body}` : ""}`,
-        );
-      }
-      return response.json().catch(() => ({}));
-    });
-
-    const promptResult = await promptPromise;
-    let streamTimeoutId = undefined;
-    await Promise.race([
-      streamPromise,
-      new Promise((resolve) => {
-        streamTimeoutId = setTimeout(() => {
-          streamAbortController.abort();
-          resolve(false);
-        }, STREAM_COMPLETION_GRACE_MS);
-      }),
+    const completionResult = await Promise.race([
+      streamPromise.then((completed) => ({ source: "stream", completed })),
+      waitForSessionIdle(config).then(() => ({ source: "status", completed: true })),
+      sleep(SESSION_COMPLETION_TIMEOUT_MS).then(() => ({ source: "timeout", completed: false })),
     ]);
-    if (streamTimeoutId) {
-      clearTimeout(streamTimeoutId);
+
+    if (completionResult.source === "timeout") {
+      streamAbortController.abort();
+      throw new Error(
+        `Timed out waiting for OpenCode session completion after ${SESSION_COMPLETION_TIMEOUT_MS}ms`,
+      );
+    }
+
+    if (completionResult.source === "status") {
+      streamAbortController.abort();
+      await Promise.race([streamPromise, sleep(2_000)]);
+    } else if (!completionResult.completed) {
+      await waitForSessionIdle(config);
     }
 
     // Persist fallback assistant output if no message was captured from stream.
     let assistantOutput = undefined;
     if (!capture.lastPersistedTaskMessageId) {
-      const parts = promptResult?.parts;
-      if (Array.isArray(parts)) {
-        const textParts = parts
-          .filter((p) => p?.type === "text" && typeof p.text === "string")
-          .map((p) => p.text.trim())
-          .filter((t) => t.length > 0);
-        assistantOutput =
-          textParts.length > 0 ? textParts.join("\n\n") : "OpenCode completed without text output.";
-      } else {
-        assistantOutput = "OpenCode completed without text output.";
-      }
+      assistantOutput = "OpenCode completed without streamed assistant output.";
     }
     await callComplete(config, { assistantOutput });
   } catch (error) {

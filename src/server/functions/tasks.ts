@@ -6,6 +6,7 @@ import * as schema from "@/server/db/schema";
 import { withTransaction } from "@/server/db/transaction";
 import type { AppEnv } from "@/server/env";
 import { runInBackground } from "@/server/lib/background";
+import { isLocalhostOrigin } from "@/server/lib/localhost-origin";
 import {
   DEFAULT_OPENCODE_MODEL,
   DEFAULT_OPENCODE_PROVIDER,
@@ -138,6 +139,11 @@ async function queueTaskRun(args: {
     configuredWorkerOrigin != null
       ? normalizeOrigin(configuredWorkerOrigin, "WORKER_CALLBACK_ORIGIN")
       : requestOrigin;
+  if (isLocalhostOrigin(workerOrigin)) {
+    badRequest(
+      "Sandbox task runs do not support localhost callback origins. Use a preview deployment or set WORKER_CALLBACK_ORIGIN to a public URL.",
+    );
+  }
 
   const now = Date.now();
   const run = {

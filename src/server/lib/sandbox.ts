@@ -7,6 +7,62 @@ import taskRunnerSource from "../../../sandbox/task-runner.mjs?raw";
 const SANDBOX_TIMEOUT_MS_DEFAULT = 15 * 60 * 1000;
 const OPENCODE_PORT = 4096;
 const TASK_RUNNER_PATH = "/vercel/sandbox/task-runner.mjs";
+const GITHUB_CLI_INSTALL_SCRIPT = `
+set -euo pipefail
+
+if command -v curl >/dev/null 2>&1; then
+  fetch_text() { curl -fsSL "$1"; }
+  fetch_file() { curl -fsSL "$1" -o "$2"; }
+elif command -v wget >/dev/null 2>&1; then
+  fetch_text() { wget -qO- "$1"; }
+  fetch_file() { wget -qO "$2" "$1"; }
+else
+  echo "Neither curl nor wget is available" >&2
+  exit 1
+fi
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) GH_ARCH="amd64" ;;
+  aarch64|arm64) GH_ARCH="arm64" ;;
+  *)
+    echo "Unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
+RELEASE_JSON="$(fetch_text https://api.github.com/repos/cli/cli/releases/latest)"
+VERSION="$(printf "%s" "$RELEASE_JSON" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name":[[:space:]]*"v?([^"]+)".*/\\1/')"
+if [ -z "$VERSION" ]; then
+  echo "Unable to resolve latest gh release version" >&2
+  exit 1
+fi
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+ARCHIVE="gh_\${VERSION}_linux_\${GH_ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/cli/cli/releases/download/v\${VERSION}/\${ARCHIVE}"
+
+fetch_file "$DOWNLOAD_URL" "$TMP_DIR/gh.tgz"
+tar -xzf "$TMP_DIR/gh.tgz" -C "$TMP_DIR"
+
+if [ -w /usr/local/bin ]; then
+  INSTALL_DIR="/usr/local/bin"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+  mkdir -p "$INSTALL_DIR"
+fi
+
+SOURCE_BINARY="$TMP_DIR/gh_\${VERSION}_linux_\${GH_ARCH}/bin/gh"
+if command -v install >/dev/null 2>&1; then
+  install -m 0755 "$SOURCE_BINARY" "$INSTALL_DIR/gh"
+else
+  cp "$SOURCE_BINARY" "$INSTALL_DIR/gh"
+  chmod 0755 "$INSTALL_DIR/gh"
+fi
+
+printf "%s" "$INSTALL_DIR"
+`;
 
 type ExecOptions = {
   cwd?: string;
@@ -133,8 +189,7 @@ class VercelTaskSandbox implements TaskSandbox {
   async ensureBaseTooling(): Promise<void> {
     await this.#ensureTaskRunnerScript();
 
-    const opencodeCheck = await this.exec("command -v opencode >/dev/null 2>&1");
-    if (!opencodeCheck.success) {
+    if (!(await this.#commandExists("opencode"))) {
       const install = await this.exec("npm install -g opencode-ai");
       if (!install.success) {
         throw new Error(
@@ -143,20 +198,7 @@ class VercelTaskSandbox implements TaskSandbox {
       }
     }
 
-    const ghCheck = await this.exec("command -v gh >/dev/null 2>&1");
-    if (!ghCheck.success) {
-      const install = await this.#sandbox.runCommand({
-        cmd: "dnf",
-        args: ["install", "-y", "gh"],
-        sudo: true,
-        env: this.#commandEnv,
-      });
-
-      if (install.exitCode !== 0) {
-        const [stdout, stderr] = await Promise.all([install.stdout(), install.stderr()]);
-        console.warn("Failed to install gh in sandbox", { stderr: stderr || stdout });
-      }
-    }
+    await this.#ensureGithubCli();
   }
 
   async #ensureTaskRunnerScript(): Promise<void> {
@@ -176,7 +218,17 @@ class VercelTaskSandbox implements TaskSandbox {
   async #isOpencodeReady(): Promise<boolean> {
     try {
       const response = await fetch(`${this.domain(OPENCODE_PORT)}/session/status`);
-      return response.ok;
+      if (!response.ok) {
+        return false;
+      }
+
+      const body = (await response.text()).trim();
+      if (body.length === 0) {
+        return false;
+      }
+
+      const parsed = JSON.parse(body) as unknown;
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
     } catch {
       return false;
     }
@@ -191,6 +243,80 @@ class VercelTaskSandbox implements TaskSandbox {
     }
 
     throw new Error("Timed out waiting for opencode server to become ready");
+  }
+
+  async #commandExists(command: string): Promise<boolean> {
+    const check = await this.exec(`command -v ${command} >/dev/null 2>&1`);
+    return check.success;
+  }
+
+  async #ensureGithubCli(): Promise<void> {
+    if (await this.#commandExists("gh")) {
+      return;
+    }
+
+    const installErrors: string[] = [];
+
+    if (await this.#commandExists("dnf")) {
+      const dnfInstall = await this.#sandbox.runCommand({
+        cmd: "dnf",
+        args: ["install", "-y", "gh"],
+        sudo: true,
+        env: this.#commandEnv,
+      });
+      if (dnfInstall.exitCode !== 0) {
+        const [stdout, stderr] = await Promise.all([dnfInstall.stdout(), dnfInstall.stderr()]);
+        const output = stderr.trim().length > 0 ? stderr : stdout;
+        const message = normalizeCommandFailureMessage(output);
+        if (message) {
+          installErrors.push(`dnf: ${message}`);
+        }
+      }
+    }
+
+    if (await this.#commandExists("gh")) {
+      return;
+    }
+
+    const installFromRelease = await this.exec(GITHUB_CLI_INSTALL_SCRIPT);
+    if (installFromRelease.success) {
+      const installDirectory = installFromRelease.stdout.trim();
+      if (installDirectory.length > 0) {
+        await this.#prependPath(installDirectory);
+      }
+    } else {
+      const output =
+        installFromRelease.stderr.trim().length > 0
+          ? installFromRelease.stderr
+          : installFromRelease.stdout;
+      const message = normalizeCommandFailureMessage(output);
+      if (message) {
+        installErrors.push(`release: ${message}`);
+      }
+    }
+
+    if (await this.#commandExists("gh")) {
+      return;
+    }
+
+    const combinedError = installErrors.join(" | ");
+    console.warn("Failed to install gh in sandbox", {
+      stderr: combinedError.length > 0 ? combinedError : "unknown error",
+    });
+  }
+
+  async #prependPath(pathEntry: string): Promise<void> {
+    const currentPath = (await this.exec("printf '%s' \"$PATH\"")).stdout.trim();
+
+    if (currentPath.length === 0) {
+      this.#commandEnv.PATH = pathEntry;
+      return;
+    }
+
+    const segments = currentPath.split(":");
+    this.#commandEnv.PATH = segments.includes(pathEntry)
+      ? currentPath
+      : `${pathEntry}:${currentPath}`;
   }
 }
 
@@ -264,6 +390,11 @@ function resolveSandboxTimeout(env: SandboxEnv): number {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `"'"'`)}'`;
+}
+
+function normalizeCommandFailureMessage(value: string): string {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : "unknown error";
 }
 
 export const TASK_RUNNER_COMMAND = `node ${TASK_RUNNER_PATH}`;

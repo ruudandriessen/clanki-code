@@ -14,6 +14,42 @@ import { prepareSandbox } from "./prepare-sandbox";
 import { cloneRepository, runSetupScript, setupGitIdentity, setupGitToken } from "./setup-git";
 
 type TaskExecutionEnv = SandboxEnv & GitHubAppEnv & SecretCryptoEnv & DurableStreamsEnv;
+const FIRST_MESSAGE_SYSTEM_PROMPT =
+  "System instruction: Before writing or changing any code, create a git branch based on the user message first.";
+const CALLBACK_PROBE_COMMAND = `node -e "(async () => { const url = process.env.TASK_WORKER_URL + '/api/internal/task-runs/' + process.env.TASK_RUN_ID + '/heartbeat'; try { const response = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.TASK_CALLBACK_TOKEN, 'Content-Type': 'application/json' }, body: '{}' }); if (!response.ok) { const body = (await response.text()).trim(); console.error('callback probe failed: ' + response.status + ' ' + response.statusText + (body ? ': ' + body : '')); process.exit(1); } } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); } })();"`;
+
+function buildTaskPrompt(prompt: string, isFirstMessage: boolean): string {
+  if (!isFirstMessage) {
+    return prompt;
+  }
+
+  return `${FIRST_MESSAGE_SYSTEM_PROMPT}\n\nUser message:\n${prompt}`;
+}
+
+async function verifySandboxCallbackReachability(args: {
+  sandbox: {
+    exec: (
+      command: string,
+      options?: { cwd?: string },
+    ) => Promise<{
+      success: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    }>;
+  };
+  repoDir: string;
+}): Promise<void> {
+  const probe = await args.sandbox.exec(CALLBACK_PROBE_COMMAND, { cwd: args.repoDir });
+  if (probe.success) {
+    return;
+  }
+
+  const output = probe.stderr.trim().length > 0 ? probe.stderr.trim() : probe.stdout.trim();
+  throw new Error(
+    `Sandbox cannot reach worker callback endpoint: ${output || `exit code ${probe.exitCode}`}`,
+  );
+}
 
 /**
  * Set up the sandbox and launch the autonomous task-runner script.
@@ -181,7 +217,6 @@ export async function executeTaskPrompt(args: {
     message: "Connecting assistant session",
   });
   let sessionId = "";
-  let isNewSession = false;
   try {
     const { client } = await connectAssistant({
       sandbox,
@@ -192,9 +227,33 @@ export async function executeTaskPrompt(args: {
       env,
       userId: initiatedByUserId,
     });
-    const session = await ensureSession({ client, db, taskId, taskTitle, sandboxId });
+    const session = await ensureSession({
+      client,
+      directory: repoDir,
+      db,
+      taskId,
+      taskTitle,
+      sandboxId,
+    });
+
+    const promptText = buildTaskPrompt(prompt, session.isNewSession);
+    const promptResponse = await client.session.promptAsync({
+      path: { id: session.sessionId },
+      query: { directory: repoDir },
+      body: {
+        parts: [{ type: "text", text: promptText }],
+      },
+    });
+    if (!promptResponse.response.ok) {
+      const statusText = promptResponse.response.statusText.trim();
+      const statusInfo =
+        statusText.length > 0
+          ? `${promptResponse.response.status} ${statusText}`
+          : String(promptResponse.response.status);
+      throw new Error(`Failed to dispatch prompt to OpenCode session (${statusInfo})`);
+    }
+
     sessionId = session.sessionId;
-    isNewSession = session.isNewSession;
   } catch (error) {
     await emitLifecycleEvent({
       phase: "assistant",
@@ -223,16 +282,16 @@ export async function executeTaskPrompt(args: {
     TASK_RUN_ID: executionId,
     TASK_ORG_ID: organizationId,
     TASK_SESSION_ID: sessionId,
-    TASK_IS_FIRST_MESSAGE: isNewSession ? "1" : "0",
     TASK_REPO_DIR: repoDir,
-    TASK_PROMPT: prompt,
     TASK_DS_SERVICE_ID: env.DURABLE_STREAMS_SERVICE_ID ?? "",
     TASK_DS_SECRET: env.DURABLE_STREAMS_SECRET ?? "",
   });
 
+  await verifySandboxCallbackReachability({ sandbox, repoDir });
+
   // Launch the autonomous task-runner in the background.
-  // The script reads all context from env vars and handles prompt execution,
-  // event streaming, and worker callbacks independently.
+  // The script reads all context from env vars and handles
+  // event streaming plus worker callbacks independently.
   sandbox.execDetached(TASK_RUNNER_COMMAND).catch((error) => {
     console.error("Failed to start task-runner in sandbox", {
       executionId,
