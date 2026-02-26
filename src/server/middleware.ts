@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createAuth } from "./auth";
 import { getDb } from "./db/client";
 import { getEnv } from "./env";
+import { resolveAuthorizedActiveOrganizationId } from "./lib/active-organization";
 import { toSessionErrorResponse } from "./session-error-response";
 
 export type SessionContext = {
@@ -25,10 +26,17 @@ export const authMiddleware = createMiddleware().server(async ({ next }) => {
     throw new Response("Unauthorized", { status: 401 });
   }
 
+  const db = getDb(env);
+  const activeOrganizationId = await resolveAuthorizedActiveOrganizationId({
+    db,
+    userId: result.session.userId,
+    activeOrganizationId: result.session.activeOrganizationId,
+  });
+
   const session: SessionContext = {
     session: {
       userId: result.session.userId,
-      activeOrganizationId: result.session.activeOrganizationId,
+      activeOrganizationId,
     },
     user: {
       id: result.user.id,
@@ -39,5 +47,5 @@ export const authMiddleware = createMiddleware().server(async ({ next }) => {
   };
 
   const requestOrigin = new URL(request.url).origin;
-  return next({ context: { session, db: getDb(env), env, requestOrigin } });
+  return next({ context: { session, db, env, requestOrigin } });
 });

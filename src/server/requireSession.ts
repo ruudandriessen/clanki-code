@@ -1,5 +1,7 @@
 import { createAuth } from "./auth";
+import { getDb } from "./db/client";
 import { getEnv } from "./env";
+import { resolveAuthorizedActiveOrganizationId } from "./lib/active-organization";
 import { SessionContext } from "./middleware";
 import { toSessionErrorResponse } from "./session-error-response";
 
@@ -9,6 +11,7 @@ import { toSessionErrorResponse } from "./session-error-response";
  */
 export async function requireSession(request: Request): Promise<SessionContext> {
   const env = getEnv();
+  const db = getDb(env);
   const auth = createAuth(env, request);
   let result: Awaited<ReturnType<typeof auth.api.getSession>>;
   try {
@@ -21,10 +24,16 @@ export async function requireSession(request: Request): Promise<SessionContext> 
     throw new Response("Unauthorized", { status: 401 });
   }
 
+  const activeOrganizationId = await resolveAuthorizedActiveOrganizationId({
+    db,
+    userId: result.session.userId,
+    activeOrganizationId: result.session.activeOrganizationId,
+  });
+
   return {
     session: {
       userId: result.session.userId,
-      activeOrganizationId: result.session.activeOrganizationId,
+      activeOrganizationId,
     },
     user: {
       id: result.user.id,
