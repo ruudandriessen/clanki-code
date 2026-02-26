@@ -245,7 +245,7 @@ export function TaskList() {
         </Button>
       </div>
 
-      <nav className="neo-scroll flex-1 space-y-3 overflow-y-auto px-2 pb-2">
+      <nav className="neo-scroll flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-2 pb-24 md:pb-2">
         {SIDEBAR_GROUPS.map((group) => {
           const tasksInGroup = groupedTasks[group.key];
 
