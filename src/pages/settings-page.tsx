@@ -30,15 +30,25 @@ function formatMsTimestamp(msTimestamp: bigint): string {
 }
 
 export function SettingsPage() {
-  const { data: projects, isLoading } = useLiveQuery((q) =>
-    q.from({ p: projectsCollection }).orderBy(({ p }) => p.created_at, "asc"),
+  const activeOrganization = useOrganization();
+  const activeOrganizationId = activeOrganization.data?.id ?? null;
+  const { data: projects, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ p: projectsCollection })
+        .where(({ p }) =>
+          activeOrganizationId
+            ? eq(p.organization_id, activeOrganizationId)
+            : eq(p.organization_id, ""),
+        )
+        .orderBy(({ p }) => p.created_at, "asc"),
+    [activeOrganizationId],
   );
   const { data: openAiCredentialRows, isLoading: isOpenAiCredentialLoading } = useLiveQuery((q) =>
     q
       .from({ credential: providerCredentialsCollection })
       .where(({ credential }) => eq(credential.provider, OPENAI_PROVIDER)),
   );
-  const activeOrganization = useOrganization();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [openaiApiKey, setOpenaiApiKey] = useState("");
