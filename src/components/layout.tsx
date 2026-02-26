@@ -47,8 +47,8 @@ export function Layout() {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-card transition-transform duration-200 ease-in-out",
-          "md:relative md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-full max-w-full overflow-hidden border-r border-border bg-card transition-transform duration-200 ease-in-out",
+          "md:relative md:w-64 md:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
