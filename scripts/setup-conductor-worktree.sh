@@ -28,7 +28,7 @@ bun install
 mkdir -p dist
 copy_file "$ROOT_PATH/.env" ".env"
 
-if [ ! -d "$ROOT_PATH/src-tauri" ]; then
+if [ ! -d "$ROOT_PATH/packages/desktop/src-tauri" ]; then
   exit 0
 fi
 
@@ -44,5 +44,5 @@ fi
 )
 
 copy_dir "$ROOT_PATH/.output" ".output"
-copy_dir "$ROOT_PATH/src-tauri/binaries" "src-tauri/binaries"
-copy_dir "$ROOT_PATH/src-tauri/target" "src-tauri/target"
+copy_dir "$ROOT_PATH/packages/desktop/src-tauri/binaries" "packages/desktop/src-tauri/binaries"
+copy_dir "$ROOT_PATH/packages/desktop/src-tauri/target" "packages/desktop/src-tauri/target"

@@ -1,0 +1,15 @@
+{
+  "name": "@clanki/desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
+    "tauri:prepare": "(cd ../.. && bun run build) && bun ./scripts/prepare-tauri-sidecar.mjs",
+    "web:dev:tauri": "cd ../.. && bun run dev -- --host 127.0.0.1 --port 1420"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

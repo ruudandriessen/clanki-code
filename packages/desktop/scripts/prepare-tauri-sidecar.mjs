@@ -10,11 +10,11 @@ mkdirSync(dirname(sidecarPath), { recursive: true });
 copyFileSync(bunPath, sidecarPath);
 chmodSync(sidecarPath, 0o755);
 
-if (!existsSync(".output/server/index.mjs")) {
+if (!existsSync(join("..", "..", ".output", "server", "index.mjs"))) {
   throw new Error("Missing .output/server/index.mjs. Run `bun run build` first.");
 }
 
-if (!existsSync(".output/public")) {
+if (!existsSync(join("..", "..", ".output", "public"))) {
   throw new Error("Missing .output/public. Run `bun run build` first.");
 }
 
