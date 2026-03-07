@@ -136,3 +136,42 @@ navigate({ to: "/tasks/$taskId", params: { taskId: id } });
 - Never use `as` type assertions to cast param/search types.
 - Always pass `from` (the **route ID**) to `useParams` and `useSearch` so types are inferred. Route IDs include ID-route parent prefixes (e.g. `/layout/...`), while `to` uses URL paths.
 - When adding search params to a route, always add `validateSearch` with sensible defaults so malformed URLs don't crash the app.
+
+## Execution Roadmap
+
+The product direction is to move from Vercel sandboxes to a local runner model built on git worktrees, while preserving a clean path to future remote or self-hosted runners.
+
+The local app shell should be built with `Tauri`, not as a pure PWA.
+
+### Architecture direction
+
+- Treat execution as a backend interface, not as a sandbox-specific implementation detail.
+- Prefer the terms `runner`, `execution backend`, `workspace`, and `worktree` in new code and docs. Avoid introducing new sandbox-specific concepts unless touching legacy code that has not been migrated yet.
+- Keep the control plane separate from the execution plane:
+  - control plane: app UI, task lifecycle, persistence, auth, event history
+  - execution plane: repo checkout/worktree lifecycle, process execution, OpenCode session wiring, preview process management
+- Keep the current detached task runner and event streaming model backend-agnostic where possible so it can run locally now and remotely later.
+
+### Local-first implementation steps
+
+1. Introduce a runner abstraction in place of the current sandbox-specific API.
+2. Add the `Tauri` desktop shell around the existing app and use it as the host for local runner capabilities.
+3. Implement a local worktree runner that can prepare a workspace, execute commands, launch detached processes, read files, and clean up.
+4. Change task execution flow to target the runner abstraction instead of Vercel sandbox primitives.
+5. Replace clone-per-run behavior with cached repo checkout plus per-task git worktrees.
+6. Generalize persisted execution state so it no longer depends on `sandboxId` as the primary concept.
+7. Replace sandbox-only preview, callback, and background-execution assumptions with local equivalents.
+8. Add recovery and cleanup for crashed processes, stale worktrees, and port conflicts.
+
+### Remote-ready constraints
+
+- Do not hardcode local-only assumptions into the domain model if they would block a remote runner later.
+- Prefer storing runner metadata such as runner type, workspace identifier, workspace path, process identifiers, and preview URL instead of only sandbox identifiers.
+- Keep runner operations small and explicit so the same contract can later be implemented by a daemon on a self-hosted machine.
+- Defer the remote implementation itself for now; design for it, but optimize the current work for the local runner first.
+
+### Scope guardrails
+
+- Do not introduce broad new configuration surfaces unless a concrete product need requires it.
+- Prefer direct defaults for local execution over adding feature flags for every behavior.
+- When migrating legacy sandbox code, prioritize extracting interfaces first, then swapping implementations, then renaming persisted fields where needed.
