@@ -15,10 +15,11 @@ export function AnimatedStreamItem({ children, className, delayMs = 0 }: Animate
 
   return (
     <motion.div
-      layout
+      layout="position"
       className={cn("overflow-hidden", className)}
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 12, scale: 0.985 }}
-      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+      style={{ transformOrigin: "top left" }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{
         layout: {
           duration: 0.22,
