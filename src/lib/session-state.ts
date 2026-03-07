@@ -2,49 +2,56 @@ import { useEffect, useState } from "react";
 
 type SetStateAction<T> = T | ((previousState: T) => T);
 
-export type SessionStateKey<T> = {
+type BrowserStorageKind = "local" | "session";
+
+export type StorageStateKey<T> = {
+  storage: BrowserStorageKind;
   storageKey: string;
   parse: (rawValue: string) => T;
   serialize: (value: T) => string;
 };
 
-function createSessionStateKey<T>(
+function createStorageStateKey<T>(
+  storage: BrowserStorageKind,
   storageKey: string,
   options?: {
     parse?: (rawValue: string) => T;
     serialize?: (value: T) => string;
   },
-): SessionStateKey<T> {
+): StorageStateKey<T> {
   return {
+    storage,
     storageKey,
     parse: options?.parse ?? defaultParse,
     serialize: options?.serialize ?? defaultSerialize,
   };
 }
 
-export function useSessionState<T>(
-  key: SessionStateKey<T>,
+function useStorageState<T>(
+  key: StorageStateKey<T>,
   initialState: T | (() => T),
 ): [T, (nextState: SetStateAction<T>) => void] {
-  const { parse, serialize, storageKey } = key;
+  const { parse, serialize, storage, storageKey } = key;
   const [state, setState] = useState<T>(() =>
-    getInitialSessionState(storageKey, parse, initialState),
+    getInitialStorageState(storage, storageKey, parse, initialState),
   );
 
   useEffect(() => {
-    setState(getInitialSessionState(storageKey, parse, initialState));
-  }, [initialState, parse, storageKey]);
+    setState(getInitialStorageState(storage, storageKey, parse, initialState));
+  }, [initialState, parse, storage, storageKey]);
 
-  const setSessionState = (nextState: SetStateAction<T>) => {
+  const setStorageState = (nextState: SetStateAction<T>) => {
     setState((previousState) => {
       const resolvedState =
         typeof nextState === "function"
           ? (nextState as (previousState: T) => T)(previousState)
           : nextState;
 
-      if (canUseSessionStorage()) {
+      const browserStorage = getBrowserStorage(storage);
+
+      if (browserStorage) {
         try {
-          globalThis.sessionStorage.setItem(storageKey, serialize(resolvedState));
+          browserStorage.setItem(storageKey, serialize(resolvedState));
         } catch {
           return resolvedState;
         }
@@ -54,26 +61,42 @@ export function useSessionState<T>(
     });
   };
 
-  return [state, setSessionState];
+  return [state, setStorageState];
+}
+
+export function useSessionState<T>(
+  key: StorageStateKey<T>,
+  initialState: T | (() => T),
+): [T, (nextState: SetStateAction<T>) => void] {
+  return useStorageState(key, initialState);
+}
+
+export function useLocalStorageState<T>(
+  key: StorageStateKey<T>,
+  initialState: T | (() => T),
+): [T, (nextState: SetStateAction<T>) => void] {
+  return useStorageState(key, initialState);
 }
 
 function resolveInitialState<T>(initialState: T | (() => T)): T {
   return typeof initialState === "function" ? (initialState as () => T)() : initialState;
 }
 
-function getInitialSessionState<T>(
+function getInitialStorageState<T>(
+  storage: BrowserStorageKind,
   storageKey: string,
   parse: (rawValue: string) => T,
   initialState: T | (() => T),
 ): T {
   const resolvedInitialState = resolveInitialState(initialState);
+  const browserStorage = getBrowserStorage(storage);
 
-  if (!canUseSessionStorage()) {
+  if (!browserStorage) {
     return resolvedInitialState;
   }
 
   try {
-    const persistedValue = globalThis.sessionStorage.getItem(storageKey);
+    const persistedValue = browserStorage.getItem(storageKey);
     if (persistedValue === null) {
       return resolvedInitialState;
     }
@@ -92,12 +115,27 @@ function defaultSerialize<T>(value: T): string {
   return JSON.stringify(value);
 }
 
-function canUseSessionStorage(): boolean {
-  return typeof window !== "undefined";
+function getBrowserStorage(storage: BrowserStorageKind): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return storage === "local" ? globalThis.localStorage : globalThis.sessionStorage;
 }
 
 export const sessionStateKeys = {
-  taskInput: (taskId: string) => createSessionStateKey<string>(`task-input:${taskId}`),
+  taskInput: (taskId: string) => createStorageStateKey<string>("session", `task-input:${taskId}`),
   taskModel: (taskId: string) =>
-    createSessionStateKey<{ model: string; provider: string } | null>(`task-model:${taskId}`),
+    createStorageStateKey<{ model: string; provider: string } | null>(
+      "session",
+      `task-model:${taskId}`,
+    ),
+};
+
+export const localStorageKeys = {
+  lastUsedTaskModel: () =>
+    createStorageStateKey<{ model: string; provider: string } | null>(
+      "local",
+      "last-used-task-model",
+    ),
 };

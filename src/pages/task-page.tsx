@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button";
 import { promptDesktopRunnerTask } from "@/lib/desktop-runner";
 import { isDesktopApp } from "@/lib/is-desktop-app";
 import {
+  localStorageKeys,
+  sessionStateKeys,
+  useLocalStorageState,
+  useSessionState,
+} from "@/lib/session-state";
+import {
   getDefaultRunnerModelSelection,
   getRunnerModelOptions,
   isRunnerModelSelectionAvailable,
@@ -19,7 +25,6 @@ import {
   useRunnerModels,
 } from "@/lib/runner-models";
 import { Textarea } from "@/components/ui/textarea";
-import { sessionStateKeys, useSessionState } from "@/lib/session-state";
 import { cn } from "@/lib/utils";
 import { startTaskRun } from "@/server/functions/task-runs";
 import type { Event as OpenCodeEvent } from "@opencode-ai/sdk";
@@ -173,6 +178,10 @@ export function TaskPage({
     sessionStateKeys.taskModel(taskId),
     null,
   );
+  const [lastUsedModel, setLastUsedModel] = useLocalStorageState(
+    localStorageKeys.lastUsedTaskModel(),
+    null,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const runEvents = useTaskEventStream({ taskId, streamId });
@@ -217,7 +226,9 @@ export function TaskPage({
   const defaultModelSelection = getDefaultRunnerModelSelection(runnerModels);
   const activeModelSelection = isRunnerModelSelectionAvailable(selectedModel, availableModelOptions)
     ? selectedModel
-    : defaultModelSelection;
+    : isRunnerModelSelectionAvailable(lastUsedModel, availableModelOptions)
+      ? lastUsedModel
+      : defaultModelSelection;
   const runnerModelErrorMessage =
     runnerModelsError instanceof Error ? runnerModelsError.message : null;
   const displayError = localError ?? error;
@@ -280,6 +291,10 @@ export function TaskPage({
     shouldStickToBottomRef.current = true;
     setSending(true);
     setLocalError(null);
+    if (!selectionsMatch(selectedModel, activeModelSelection)) {
+      setSelectedModel(activeModelSelection);
+    }
+    setLastUsedModel(activeModelSelection);
     if (contentOverride === undefined) {
       setInput("");
     }
@@ -556,7 +571,10 @@ export function TaskPage({
             {isRunnerBackedTask && desktopApp ? (
               <TaskModelPicker
                 value={activeModelSelection}
-                onChange={setSelectedModel}
+                onChange={(nextSelection) => {
+                  setSelectedModel(nextSelection);
+                  setLastUsedModel(nextSelection);
+                }}
                 options={availableModelOptions}
                 isLoading={isRunnerModelsLoading}
                 error={
