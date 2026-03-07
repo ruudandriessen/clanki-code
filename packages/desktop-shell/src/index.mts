@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { createAppServerController } from "./app-server.mjs";
 import { createDesktopRunnerController } from "./desktop-runner.mjs";
 
@@ -29,6 +29,21 @@ function registerIpcHandlers(): void {
   });
 }
 
+function isExternalUrl(targetUrl: string, appUrl: string): boolean {
+  try {
+    const target = new URL(targetUrl);
+    const appLocation = new URL(appUrl);
+
+    if (target.protocol === "http:" || target.protocol === "https:") {
+      return target.origin !== appLocation.origin;
+    }
+
+    return target.protocol === "mailto:";
+  } catch {
+    return false;
+  }
+}
+
 async function createMainWindow(): Promise<BrowserWindow> {
   const appUrl = await appServerController.resolveAppUrl();
   const window = new BrowserWindow({
@@ -43,6 +58,23 @@ async function createMainWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url, appUrl)) {
+      void shell.openExternal(url);
+    }
+
+    return { action: "deny" };
+  });
+
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!isExternalUrl(url, appUrl)) {
+      return;
+    }
+
+    event.preventDefault();
+    void shell.openExternal(url);
   });
 
   await window.loadURL(appUrl);
