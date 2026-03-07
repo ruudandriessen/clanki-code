@@ -1,5 +1,5 @@
-use reqwest::blocking::{Client, Response};
-use serde::{Deserialize, Serialize};
+use reqwest::blocking::Client;
+use serde::Serialize;
 use std::{
     error::Error,
     net::{TcpListener, TcpStream},
@@ -14,9 +14,6 @@ use tauri_plugin_shell::process::CommandChild;
 
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
-
-const DEFAULT_OPENCODE_MODEL: &str = "gpt-5.3-codex";
-const DEFAULT_OPENCODE_PROVIDER: &str = "openai";
 
 struct ServerProcess(Mutex<Option<CommandChild>>);
 struct RunnerProcess(Mutex<Option<RunnerInstance>>);
@@ -33,53 +30,11 @@ struct RunnerConnection {
     workspace_directory: String,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RunnerSessionSummary {
-    created_at: u64,
-    directory: String,
-    id: String,
-    title: String,
-    updated_at: u64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ListAssistantSessionsResponse {
-    sessions: Vec<RunnerSessionSummary>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunnerSessionsPayload {
-    sessions: Vec<RunnerSessionSummary>,
+struct RunnerConnectionPayload {
+    base_url: String,
     workspace_directory: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateRunnerSessionResponse {
-    session_id: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct EnsureAssistantSessionRequest {
-    directory: String,
-    model: String,
-    provider: String,
-    task_title: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EnsureAssistantSessionResponse {
-    session_id: String,
-}
-
-#[derive(Deserialize)]
-struct RunnerErrorResponse {
-    error: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -88,10 +43,7 @@ pub fn run() {
         .manage(ServerProcess(Mutex::new(None)))
         .manage(RunnerProcess(Mutex::new(None)))
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
-            create_runner_session,
-            list_runner_sessions
-        ])
+        .invoke_handler(tauri::generate_handler![ensure_runner_connection])
         .setup(|app| {
             let app_url = resolve_app_url(app.handle())?;
 
@@ -124,52 +76,15 @@ pub fn run() {
 }
 
 #[tauri::command]
-fn list_runner_sessions(
+fn ensure_runner_connection(
     app: AppHandle,
     runner_process: State<'_, RunnerProcess>,
-) -> Result<RunnerSessionsPayload, String> {
+) -> Result<RunnerConnectionPayload, String> {
     let runner = ensure_runner(&app, runner_process.inner())?;
-    let client = runner_http_client()?;
-    let response = client
-        .get(format!("{}/assistant/sessions", runner.base_url))
-        .query(&[("directory", runner.workspace_directory.as_str())])
-        .send()
-        .map_err(|error| format!("Failed to reach local runner: {error}"))?;
-    let payload: ListAssistantSessionsResponse = parse_runner_json(response)?;
 
-    Ok(RunnerSessionsPayload {
-        sessions: payload.sessions,
+    Ok(RunnerConnectionPayload {
+        base_url: runner.base_url,
         workspace_directory: runner.workspace_directory,
-    })
-}
-
-#[tauri::command]
-fn create_runner_session(
-    app: AppHandle,
-    runner_process: State<'_, RunnerProcess>,
-    title: String,
-) -> Result<CreateRunnerSessionResponse, String> {
-    let trimmed_title = title.trim();
-    if trimmed_title.is_empty() {
-        return Err("title is required".to_string());
-    }
-
-    let runner = ensure_runner(&app, runner_process.inner())?;
-    let client = runner_http_client()?;
-    let response = client
-        .post(format!("{}/assistant/session/ensure", runner.base_url))
-        .json(&EnsureAssistantSessionRequest {
-            directory: runner.workspace_directory.clone(),
-            model: DEFAULT_OPENCODE_MODEL.to_string(),
-            provider: DEFAULT_OPENCODE_PROVIDER.to_string(),
-            task_title: trimmed_title.to_string(),
-        })
-        .send()
-        .map_err(|error| format!("Failed to reach local runner: {error}"))?;
-    let payload: EnsureAssistantSessionResponse = parse_runner_json(response)?;
-
-    Ok(CreateRunnerSessionResponse {
-        session_id: payload.session_id,
     })
 }
 
@@ -275,24 +190,6 @@ fn runner_http_client() -> Result<Client, String> {
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|error| format!("Failed to create runner HTTP client: {error}"))
-}
-
-fn parse_runner_json<T: for<'de> Deserialize<'de>>(response: Response) -> Result<T, String> {
-    let status = response.status();
-
-    if status.is_success() {
-        return response
-            .json::<T>()
-            .map_err(|error| format!("Failed to decode runner response: {error}"));
-    }
-
-    let message = match response.json::<RunnerErrorResponse>() {
-        Ok(body) if !body.error.trim().is_empty() => body.error,
-        Ok(_) => format!("Runner request failed with status {status}"),
-        Err(_) => format!("Runner request failed with status {status}"),
-    };
-
-    Err(message)
 }
 
 #[cfg(debug_assertions)]

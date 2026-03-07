@@ -6,6 +6,11 @@ export type RunnerSessionSummary = {
   updatedAt: number;
 };
 
+export type RunnerConnectionPayload = {
+  baseUrl: string;
+  workspaceDirectory: string;
+};
+
 export type RunnerSessionsPayload = {
   sessions: RunnerSessionSummary[];
   workspaceDirectory: string;
