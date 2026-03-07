@@ -1,20 +1,26 @@
-const { spawnSync } = require("node:child_process");
-const net = require("node:net");
-const { setTimeout: delay } = require("node:timers/promises");
+import { spawnSync, type ChildProcess } from "node:child_process";
+import net from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 
-function attachProcessStderr(child) {
-  child.stderr?.on("data", (chunk) => {
+type WaitOptions = {
+  check?: () => void;
+  timeoutMs?: number;
+};
+
+export function attachProcessStderr(child: ChildProcess): void {
+  child.stderr?.on("data", (chunk: Buffer | string) => {
     process.stderr.write(chunk);
   });
 }
 
-async function reserveLocalPort() {
+export async function reserveLocalPort(): Promise<number> {
   return await new Promise((resolve, reject) => {
     const server = net.createServer();
 
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
+
       server.close((error) => {
         if (error) {
           reject(error);
@@ -32,25 +38,7 @@ async function reserveLocalPort() {
   });
 }
 
-async function waitForPort(port, options = {}) {
-  const timeoutMs = options.timeoutMs ?? 15_000;
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    options.check?.();
-
-    if (await canConnect(port)) {
-      return;
-    }
-
-    await delay(100);
-  }
-
-  options.check?.();
-  throw new Error(`Timed out waiting for a local server on port ${port}`);
-}
-
-async function waitForHttpUrl(url, options = {}) {
+export async function waitForHttpUrl(url: string, options: WaitOptions = {}): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   const startedAt = Date.now();
 
@@ -71,12 +59,30 @@ async function waitForHttpUrl(url, options = {}) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-function resolveBunBinary() {
+export async function waitForPort(port: number, options: WaitOptions = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    options.check?.();
+
+    if (await canConnect(port)) {
+      return;
+    }
+
+    await delay(100);
+  }
+
+  options.check?.();
+  throw new Error(`Timed out waiting for a local server on port ${port}`);
+}
+
+export function resolveBunBinary(): string {
   const configuredPath = process.env.BUN_BINARY?.trim();
   return configuredPath || "bun";
 }
 
-function runCommand(program, args, errorContext) {
+export function runCommand(program: string, args: string[], errorContext?: string): string {
   const output = spawnSync(program, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -104,26 +110,28 @@ function runCommand(program, args, errorContext) {
   throw new Error(`Command ${program} failed: ${details}`);
 }
 
-async function stopChildProcess(child) {
+export async function stopChildProcess(child: ChildProcess | null | undefined): Promise<void> {
   if (!child || child.exitCode !== null) {
     return;
   }
 
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     const timeoutId = setTimeout(resolve, 1_000);
+
     child.once("exit", () => {
       clearTimeout(timeoutId);
       resolve();
     });
+
     child.kill();
   });
 }
 
-function canConnect(port) {
-  return new Promise((resolve) => {
+async function canConnect(port: number): Promise<boolean> {
+  return await new Promise((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port });
 
-    const finish = (result) => {
+    const finish = (result: boolean) => {
       socket.removeAllListeners();
       socket.destroy();
       resolve(result);
@@ -133,13 +141,3 @@ function canConnect(port) {
     socket.once("error", () => finish(false));
   });
 }
-
-module.exports = {
-  attachProcessStderr,
-  reserveLocalPort,
-  resolveBunBinary,
-  runCommand,
-  stopChildProcess,
-  waitForHttpUrl,
-  waitForPort,
-};

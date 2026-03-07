@@ -5,15 +5,15 @@
     "packages/*"
   ],
   "type": "module",
-  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && tsc --noEmit",
+    "build:web": "vite build",
+    "build": "bun run build:web && bun run --cwd packages/desktop-shell build && tsc --noEmit",
     "preview": "vite preview",
-    "runner:dev": "bun --cwd packages/runner run dev",
-    "electron:start": "electron .",
+    "runner:dev": "bun run --cwd packages/runner dev",
+    "electron:start": "bun run build && electron packages/desktop-shell/dist/index.mjs",
     "electron:build": "bun run build",
-    "electron:dev": "concurrently -k \"bun run dev -- --host 127.0.0.1 --port 1420\" \"CLANKI_ELECTRON_DEV_URL=http://127.0.0.1:1420 electron .\"",
+    "electron:dev": "bun run --cwd packages/desktop-shell build && concurrently -k \"bun run --cwd packages/desktop-shell dev\" \"bun run dev -- --host 127.0.0.1 --port 1420\" \"CLANKI_ELECTRON_DEV_URL=http://127.0.0.1:1420 electron packages/desktop-shell/dist/index.mjs\"",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "DATABASE_URL=\"${DATABASE_URL:-$(grep '^DATABASE_URL=' .env | cut -d= -f2-)}\" sh -c '[ -n \"$DATABASE_URL\" ] || { echo \"Missing DATABASE_URL\"; exit 1; }; drizzle-kit migrate --config drizzle.config.ts'",
     "db:push": "DATABASE_URL=\"${DATABASE_URL:-$(grep '^DATABASE_URL=' .env | cut -d= -f2-)}\" sh -c '[ -n \"$DATABASE_URL\" ] || { echo \"Missing DATABASE_URL\"; exit 1; }; drizzle-kit push --config drizzle.config.ts'",
@@ -55,6 +55,7 @@
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",
     "@commitlint/config-conventional": "^20.3.1",
+    "@types/node": "^24.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
