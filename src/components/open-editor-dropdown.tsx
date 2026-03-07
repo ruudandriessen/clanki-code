@@ -6,7 +6,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -56,7 +55,6 @@ export function OpenEditorDropdown({ onError, workspacePath }: OpenEditorDropdow
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
-        <DropdownMenuLabel>Open workspace in</DropdownMenuLabel>
         {EDITOR_OPTIONS.map((option) => (
           <DropdownMenuItem
             key={option.editor}
