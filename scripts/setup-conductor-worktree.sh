@@ -28,7 +28,7 @@ bun install
 mkdir -p dist
 copy_file "$ROOT_PATH/.env" ".env"
 
-if [ ! -d "$ROOT_PATH/electron" ]; then
+if [ ! -d "$ROOT_PATH/packages/desktop-shell" ]; then
   exit 0
 fi
 

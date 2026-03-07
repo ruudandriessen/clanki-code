@@ -1,21 +1,19 @@
-const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
-const { createAppServerController } = require("./app-server.cjs");
-const { createDesktopRunnerController } = require("./desktop-runner.cjs");
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, ipcMain } from "electron";
+import { createAppServerController } from "./app-server.mjs";
+import { createDesktopRunnerController } from "./desktop-runner.mjs";
 
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = process.cwd();
 const appServerController = createAppServerController({ workspaceRoot });
 const desktopRunnerController = createDesktopRunnerController({ workspaceRoot });
 
 let isQuitting = false;
 
-function registerIpcHandlers() {
+function registerIpcHandlers(): void {
   ipcMain.handle("desktop-runner:create-session", async (_event, args) => {
     return await desktopRunnerController.createRunnerSession(args);
-  });
-
-  ipcMain.handle("desktop-runner:ensure-connection", async (_event, repoUrl) => {
-    return await desktopRunnerController.ensureRunnerConnection(repoUrl);
   });
 
   ipcMain.handle("desktop-runner:prompt-task", async (_event, args) => {
@@ -23,7 +21,7 @@ function registerIpcHandlers() {
   });
 }
 
-async function createMainWindow() {
+async function createMainWindow(): Promise<BrowserWindow> {
   const appUrl = await appServerController.resolveAppUrl();
   const window = new BrowserWindow({
     title: "Clanki",
@@ -32,7 +30,7 @@ async function createMainWindow() {
     minWidth: 960,
     minHeight: 720,
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
+      preload: path.join(currentDirectory, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -43,7 +41,7 @@ async function createMainWindow() {
   return window;
 }
 
-async function disposeControllers() {
+async function disposeControllers(): Promise<void> {
   await Promise.allSettled([appServerController.stop(), desktopRunnerController.stop()]);
 }
 

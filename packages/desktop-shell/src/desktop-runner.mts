@@ -1,34 +1,79 @@
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
-const {
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
   attachProcessStderr,
   reserveLocalPort,
   resolveBunBinary,
   runCommand,
   stopChildProcess,
   waitForPort,
-} = require("./node-utils.cjs");
+} from "./node-utils.mjs";
 
 const DEFAULT_OPENCODE_MODEL = "gpt-5.3-codex";
 const DEFAULT_OPENCODE_PROVIDER = "openai";
 
-function createDesktopRunnerController({ workspaceRoot }) {
-  let runnerProcess = null;
+type CreateRunnerSessionArgs = {
+  repoUrl: string;
+  title: string;
+};
 
-  async function ensureRunnerConnection(repoUrl) {
-    const runner = await ensureRunner();
-    const workspace = resolveRepoWorkspacePaths(repoUrl);
-    const sessions = await listRepoSessions(runner, workspace.repoRoot);
+type PromptRunnerTaskArgs = {
+  backendBaseUrl: string;
+  callbackToken: string;
+  directory: string;
+  executionId: string;
+  prompt: string;
+  sessionId: string;
+};
 
-    return {
-      sessions,
-      workspaceDirectory: workspace.repoRoot,
-    };
-  }
+type RunnerProcess = {
+  baseUrl: string;
+  child: ChildProcess;
+};
 
-  async function createRunnerSession({ repoUrl, title }) {
+type PreparedWorktree = {
+  branchName: string;
+  defaultDirectory: string;
+  directory: string;
+};
+
+type RepoWorkspacePaths = {
+  defaultDirectory: string;
+  repoRoot: string;
+};
+
+type AppRunnerController = {
+  createRunnerSession: (args: CreateRunnerSessionArgs) => Promise<{
+    runnerType: string;
+    sessionId: string;
+    workspaceDirectory: string;
+  }>;
+  promptRunnerTask: (args: PromptRunnerTaskArgs) => Promise<void>;
+  stop: () => Promise<void>;
+};
+
+type EnsureAssistantSessionResponse = {
+  sessionId: string;
+};
+
+type PromptTaskAssistantSessionResponse = {
+  ok: boolean;
+};
+
+export function createDesktopRunnerController({
+  workspaceRoot,
+}: {
+  workspaceRoot: string;
+}): AppRunnerController {
+  let runnerProcess: RunnerProcess | null = null;
+
+  async function createRunnerSession({ repoUrl, title }: CreateRunnerSessionArgs): Promise<{
+    runnerType: string;
+    sessionId: string;
+    workspaceDirectory: string;
+  }> {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       throw new Error("title is required");
@@ -38,12 +83,15 @@ function createDesktopRunnerController({ workspaceRoot }) {
     const worktree = prepareSessionWorktree(repoUrl, trimmedTitle);
 
     try {
-      const payload = await postRunnerJson(`${runner.baseUrl}/assistant/session/ensure`, {
-        directory: worktree.directory,
-        model: DEFAULT_OPENCODE_MODEL,
-        provider: DEFAULT_OPENCODE_PROVIDER,
-        taskTitle: trimmedTitle,
-      });
+      const payload = await postRunnerJson<EnsureAssistantSessionResponse>(
+        `${runner.baseUrl}/assistant/session/ensure`,
+        {
+          directory: worktree.directory,
+          model: DEFAULT_OPENCODE_MODEL,
+          provider: DEFAULT_OPENCODE_PROVIDER,
+          taskTitle: trimmedTitle,
+        },
+      );
 
       return {
         runnerType: "local-worktree",
@@ -56,25 +104,28 @@ function createDesktopRunnerController({ workspaceRoot }) {
     }
   }
 
-  async function promptRunnerTask(args) {
+  async function promptRunnerTask(args: PromptRunnerTaskArgs): Promise<void> {
     const runner = await ensureRunner();
-    const payload = await postRunnerJson(`${runner.baseUrl}/assistant/session/task-prompt`, {
-      directory: args.directory,
-      prompt: args.prompt,
-      sessionId: args.sessionId,
-      taskRun: {
-        backendBaseUrl: args.backendBaseUrl,
-        callbackToken: args.callbackToken,
-        executionId: args.executionId,
+    const payload = await postRunnerJson<PromptTaskAssistantSessionResponse>(
+      `${runner.baseUrl}/assistant/session/task-prompt`,
+      {
+        directory: args.directory,
+        prompt: args.prompt,
+        sessionId: args.sessionId,
+        taskRun: {
+          backendBaseUrl: args.backendBaseUrl,
+          callbackToken: args.callbackToken,
+          executionId: args.executionId,
+        },
       },
-    });
+    );
 
     if (!payload.ok) {
       throw new Error("Local runner task prompt did not complete successfully");
     }
   }
 
-  async function stop() {
+  async function stop(): Promise<void> {
     if (!runnerProcess) {
       return;
     }
@@ -84,7 +135,7 @@ function createDesktopRunnerController({ workspaceRoot }) {
     await stopChildProcess(child);
   }
 
-  async function ensureRunner() {
+  async function ensureRunner(): Promise<RunnerProcess> {
     if (runnerProcess && (await isRunnerHealthy(runnerProcess.baseUrl))) {
       return runnerProcess;
     }
@@ -93,7 +144,7 @@ function createDesktopRunnerController({ workspaceRoot }) {
     return await startRunner();
   }
 
-  async function startRunner() {
+  async function startRunner(): Promise<RunnerProcess> {
     const runnerEntry = path.join(workspaceRoot, "packages/runner/src/cli.ts");
     if (!fs.existsSync(runnerEntry)) {
       throw new Error(`Runner entry not found at ${runnerEntry}`);
@@ -111,7 +162,7 @@ function createDesktopRunnerController({ workspaceRoot }) {
 
     attachProcessStderr(child);
 
-    let childError = null;
+    let childError: Error | null = null;
     child.once("error", (error) => {
       childError = error;
     });
@@ -128,67 +179,23 @@ function createDesktopRunnerController({ workspaceRoot }) {
       },
     });
 
-    runnerProcess = {
+    const nextRunnerProcess: RunnerProcess = {
       baseUrl: `http://127.0.0.1:${port}`,
       child,
     };
 
-    return runnerProcess;
+    runnerProcess = nextRunnerProcess;
+    return nextRunnerProcess;
   }
 
   return {
     createRunnerSession,
-    ensureRunnerConnection,
     promptRunnerTask,
     stop,
   };
 }
 
-async function listRepoSessions(runner, repoRoot) {
-  const workspaceDirectories = listWorkspaceDirectories(repoRoot);
-  const sessions = [];
-  const seenSessionIds = new Set();
-
-  for (const directory of workspaceDirectories) {
-    const url = new URL("/assistant/sessions", runner.baseUrl);
-    url.searchParams.set("directory", directory);
-    const payload = await getRunnerJson(url.toString());
-
-    for (const session of payload.sessions) {
-      if (seenSessionIds.has(session.id)) {
-        continue;
-      }
-
-      seenSessionIds.add(session.id);
-      sessions.push(session);
-    }
-  }
-
-  sessions.sort((left, right) => {
-    if (right.updatedAt !== left.updatedAt) {
-      return right.updatedAt - left.updatedAt;
-    }
-
-    return right.createdAt - left.createdAt;
-  });
-
-  return sessions;
-}
-
-function listWorkspaceDirectories(repoRoot) {
-  if (!fs.existsSync(repoRoot)) {
-    return [];
-  }
-
-  return fs
-    .readdirSync(repoRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(repoRoot, entry.name))
-    .filter((directory) => fs.existsSync(path.join(directory, ".git")))
-    .toSorted();
-}
-
-function prepareSessionWorktree(repoUrl, title) {
+function prepareSessionWorktree(repoUrl: string, title: string): PreparedWorktree {
   const workspace = resolveRepoWorkspacePaths(repoUrl);
   const defaultBranch = ensureDefaultCheckout(repoUrl, workspace);
   const identifier = nextWorktreeIdentifier(workspace.repoRoot, title);
@@ -217,21 +224,21 @@ function prepareSessionWorktree(repoUrl, title) {
   };
 }
 
-function cleanupFailedWorktree(worktree) {
+function cleanupFailedWorktree(worktree: PreparedWorktree): void {
   try {
     runCommand(
       "git",
       ["-C", worktree.defaultDirectory, "worktree", "remove", "--force", worktree.directory],
-      null,
+      undefined,
     );
   } catch {}
 
   try {
-    runCommand("git", ["-C", worktree.defaultDirectory, "branch", "-D", worktree.branchName], null);
+    runCommand("git", ["-C", worktree.defaultDirectory, "branch", "-D", worktree.branchName]);
   } catch {}
 }
 
-function ensureDefaultCheckout(repoUrl, workspace) {
+function ensureDefaultCheckout(repoUrl: string, workspace: RepoWorkspacePaths): string {
   fs.mkdirSync(workspace.repoRoot, { recursive: true });
 
   if (!fs.existsSync(workspace.defaultDirectory)) {
@@ -263,7 +270,7 @@ function ensureDefaultCheckout(repoUrl, workspace) {
   return defaultBranch;
 }
 
-function cloneDefaultCheckout(repoUrl, defaultDirectory) {
+function cloneDefaultCheckout(repoUrl: string, defaultDirectory: string): void {
   fs.mkdirSync(path.dirname(defaultDirectory), { recursive: true });
 
   const repoSlug = parseRepoSlug(repoUrl);
@@ -274,7 +281,7 @@ function cloneDefaultCheckout(repoUrl, defaultDirectory) {
   );
 }
 
-function resolveDefaultBranch(defaultDirectory) {
+function resolveDefaultBranch(defaultDirectory: string): string {
   const reference = runCommand(
     "git",
     ["-C", defaultDirectory, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
@@ -290,7 +297,7 @@ function resolveDefaultBranch(defaultDirectory) {
   return reference;
 }
 
-function nextWorktreeIdentifier(repoRoot, title) {
+function nextWorktreeIdentifier(repoRoot: string, title: string): string {
   const titleSlug = slugifyIdentifier(title);
   const timestamp = Math.floor(Date.now() / 1_000);
 
@@ -306,7 +313,7 @@ function nextWorktreeIdentifier(repoRoot, title) {
   throw new Error(`Failed to allocate a unique worktree directory in ${repoRoot}`);
 }
 
-function slugifyIdentifier(value) {
+function slugifyIdentifier(value: string): string {
   let slug = "";
   let lastWasSeparator = false;
 
@@ -327,7 +334,7 @@ function slugifyIdentifier(value) {
   return trimmed || "session";
 }
 
-function resolveRepoWorkspacePaths(repoUrl) {
+function resolveRepoWorkspacePaths(repoUrl: string): RepoWorkspacePaths {
   const repoName = parseRepoName(repoUrl);
   const repoRoot = path.join(resolveRunnerRoot(), repoName);
 
@@ -337,11 +344,11 @@ function resolveRepoWorkspacePaths(repoUrl) {
   };
 }
 
-function resolveRunnerRoot() {
+function resolveRunnerRoot(): string {
   return path.join(os.homedir(), "clanki");
 }
 
-function parseRepoSlug(repoUrl) {
+function parseRepoSlug(repoUrl: string): string {
   const normalized = normalizeRepoReference(repoUrl);
   let repoPath = normalized;
 
@@ -361,7 +368,7 @@ function parseRepoSlug(repoUrl) {
   return `${segments[0]}/${segments[1]}`;
 }
 
-function parseRepoName(repoUrl) {
+function parseRepoName(repoUrl: string): string {
   const repoSlug = parseRepoSlug(repoUrl);
   const repoName = repoSlug.split("/")[1];
 
@@ -372,14 +379,14 @@ function parseRepoName(repoUrl) {
   return repoName;
 }
 
-function normalizeRepoReference(repoUrl) {
+function normalizeRepoReference(repoUrl: string): string {
   return repoUrl
     .trim()
     .replace(/\/+$/u, "")
     .replace(/\.git$/u, "");
 }
 
-async function isRunnerHealthy(baseUrl) {
+async function isRunnerHealthy(baseUrl: string): Promise<boolean> {
   try {
     const response = await fetch(`${baseUrl}/health`);
     return response.ok;
@@ -388,12 +395,7 @@ async function isRunnerHealthy(baseUrl) {
   }
 }
 
-async function getRunnerJson(url) {
-  const response = await fetch(url);
-  return await parseRunnerJson(response);
-}
-
-async function postRunnerJson(url, body) {
+async function postRunnerJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -402,12 +404,12 @@ async function postRunnerJson(url, body) {
     body: JSON.stringify(body),
   });
 
-  return await parseRunnerJson(response);
+  return await parseRunnerJson<T>(response);
 }
 
-async function parseRunnerJson(response) {
+async function parseRunnerJson<T>(response: Response): Promise<T> {
   if (response.ok) {
-    return await response.json();
+    return (await response.json()) as T;
   }
 
   const details = (await response.text()).trim();
@@ -419,7 +421,3 @@ async function parseRunnerJson(response) {
 
   throw new Error(`Local runner request failed (${response.status} ${statusText}): ${details}`);
 }
-
-module.exports = {
-  createDesktopRunnerController,
-};

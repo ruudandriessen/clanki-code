@@ -1,20 +1,29 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
-const {
+import fs from "node:fs";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
   attachProcessStderr,
   reserveLocalPort,
   resolveBunBinary,
   stopChildProcess,
   waitForHttpUrl,
   waitForPort,
-} = require("./node-utils.cjs");
+} from "./node-utils.mjs";
 
-function createAppServerController({ workspaceRoot }) {
-  let baseUrl = null;
-  let serverProcess = null;
+type AppServerController = {
+  resolveAppUrl: () => Promise<string>;
+  stop: () => Promise<void>;
+};
 
-  async function resolveAppUrl() {
+export function createAppServerController({
+  workspaceRoot,
+}: {
+  workspaceRoot: string;
+}): AppServerController {
+  let baseUrl: string | null = null;
+  let serverProcess: ChildProcess | null = null;
+
+  async function resolveAppUrl(): Promise<string> {
     const devUrl = process.env.CLANKI_ELECTRON_DEV_URL?.trim();
     if (devUrl) {
       await waitForHttpUrl(devUrl);
@@ -45,7 +54,7 @@ function createAppServerController({ workspaceRoot }) {
 
     attachProcessStderr(child);
 
-    let childError = null;
+    let childError: Error | null = null;
     child.once("error", (error) => {
       childError = error;
     });
@@ -67,7 +76,7 @@ function createAppServerController({ workspaceRoot }) {
     return baseUrl;
   }
 
-  async function stop() {
+  async function stop(): Promise<void> {
     if (!serverProcess) {
       return;
     }
@@ -83,7 +92,3 @@ function createAppServerController({ workspaceRoot }) {
     stop,
   };
 }
-
-module.exports = {
-  createAppServerController,
-};
