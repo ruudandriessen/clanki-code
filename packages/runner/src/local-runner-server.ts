@@ -14,6 +14,7 @@ import {
   type PromptTaskAssistantSessionRequest,
 } from "./local-runner-protocol";
 import { listOpencodeModels } from "./opencode-models";
+import { runSetupCommand } from "./run-setup-command";
 import { promptTaskAssistantSession } from "./task-assistant-session";
 import { createWorkspace, deleteWorkspace } from "./workspace";
 
@@ -84,6 +85,13 @@ export function createLocalRunnerApp(): Hono {
     });
 
     try {
+      if (typeof body.setupCommand === "string") {
+        runSetupCommand({
+          command: body.setupCommand,
+          directory: workspaceDirectory,
+        });
+      }
+
       const session = await ensureAssistantSession({
         directory: workspaceDirectory,
         existingSessionId: null,

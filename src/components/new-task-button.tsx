@@ -51,7 +51,7 @@ export function NewTaskButton({ iconOnly = false, title, ...props }: NewTaskButt
     navigate({ to: "/tasks/$taskId", params: { taskId } });
     setCreating(false);
 
-    createDesktopRunnerSession(taskTitle, repoUrl)
+    createDesktopRunnerSession(taskTitle, repoUrl, defaultProject.setup_command ?? undefined)
       .then((response) => {
         tasksCollection.update(taskId, (draft) => {
           draft.runner_type = response.runnerType;

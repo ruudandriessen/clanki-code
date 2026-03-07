@@ -30,6 +30,7 @@ export type CreateAssistantSessionRequest = {
   model: string;
   provider: string;
   repoUrl: string;
+  setupCommand?: string;
   taskTitle: string;
 };
 

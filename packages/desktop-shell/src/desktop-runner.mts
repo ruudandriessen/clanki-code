@@ -26,6 +26,7 @@ const DESKTOP_EDITOR_COMMANDS = {
 
 type CreateRunnerSessionArgs = {
   repoUrl: string;
+  setupCommand?: string;
   title: string;
 };
 
@@ -101,7 +102,11 @@ export function createDesktopRunnerController({
 }): AppRunnerController {
   let runnerProcess: RunnerProcess | null = null;
 
-  async function createRunnerSession({ repoUrl, title }: CreateRunnerSessionArgs): Promise<{
+  async function createRunnerSession({
+    repoUrl,
+    setupCommand,
+    title,
+  }: CreateRunnerSessionArgs): Promise<{
     runnerType: string;
     sessionId: string;
     workspaceDirectory: string;
@@ -118,6 +123,7 @@ export function createDesktopRunnerController({
         model: DEFAULT_OPENCODE_MODEL,
         provider: DEFAULT_OPENCODE_PROVIDER,
         repoUrl,
+        setupCommand,
         taskTitle: trimmedTitle,
       },
     );
