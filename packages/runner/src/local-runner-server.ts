@@ -52,6 +52,11 @@ async function routeRequest(request: IncomingMessage, response: ServerResponse):
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const pathname = requestUrl.pathname;
 
+  if (method === "OPTIONS") {
+    sendNoContent(response);
+    return;
+  }
+
   if (method === "GET" && pathname === "/health") {
     sendJson(response, 200, { ok: true });
     return;
@@ -132,10 +137,23 @@ async function readJson<T>(request: IncomingMessage): Promise<T> {
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
+  setCorsHeaders(response);
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
   });
   response.end(JSON.stringify(body));
+}
+
+function sendNoContent(response: ServerResponse): void {
+  setCorsHeaders(response);
+  response.writeHead(204);
+  response.end();
+}
+
+function setCorsHeaders(response: ServerResponse): void {
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  response.setHeader("Access-Control-Allow-Origin", "*");
 }
 
 function readDirectoryQuery(requestUrl: URL): string {
