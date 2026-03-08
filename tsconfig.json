@@ -1,4 +1,5 @@
 {
+  "exclude": ["release"],
   "include": ["**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "target": "ES2022",

@@ -5,31 +5,60 @@ import { createAppServerController } from "./app-server.mjs";
 import { createDesktopRunnerController } from "./desktop-runner.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const workspaceRoot = process.cwd();
-const appServerController = createAppServerController({ workspaceRoot });
-const desktopRunnerController = createDesktopRunnerController({ workspaceRoot });
+let appServerController: ReturnType<typeof createAppServerController> | null = null;
+let desktopRunnerController: ReturnType<typeof createDesktopRunnerController> | null = null;
 
 let isQuitting = false;
 
+function resolveWorkspaceRoot(): string {
+  if (app.isPackaged) {
+    return process.resourcesPath;
+  }
+
+  return process.cwd();
+}
+
+function getAppServerController(): ReturnType<typeof createAppServerController> {
+  if (appServerController) {
+    return appServerController;
+  }
+
+  appServerController = createAppServerController({
+    workspaceRoot: resolveWorkspaceRoot(),
+  });
+  return appServerController;
+}
+
+function getDesktopRunnerController(): ReturnType<typeof createDesktopRunnerController> {
+  if (desktopRunnerController) {
+    return desktopRunnerController;
+  }
+
+  desktopRunnerController = createDesktopRunnerController({
+    workspaceRoot: resolveWorkspaceRoot(),
+  });
+  return desktopRunnerController;
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle("desktop-runner:create-session", async (_event, args) => {
-    return await desktopRunnerController.createRunnerSession(args);
+    return await getDesktopRunnerController().createRunnerSession(args);
   });
 
   ipcMain.handle("desktop-runner:delete-workspace", async (_event, args) => {
-    return await desktopRunnerController.deleteRunnerWorkspace(args);
+    return await getDesktopRunnerController().deleteRunnerWorkspace(args);
   });
 
   ipcMain.handle("desktop-runner:list-models", async (_event, args) => {
-    return await desktopRunnerController.listRunnerModels(args);
+    return await getDesktopRunnerController().listRunnerModels(args);
   });
 
   ipcMain.handle("desktop-runner:open-workspace-in-editor", async (_event, args) => {
-    return await desktopRunnerController.openWorkspaceInEditor(args);
+    return await getDesktopRunnerController().openWorkspaceInEditor(args);
   });
 
   ipcMain.handle("desktop-runner:prompt-task", async (_event, args) => {
-    return await desktopRunnerController.promptRunnerTask(args);
+    return await getDesktopRunnerController().promptRunnerTask(args);
   });
 }
 
@@ -67,7 +96,7 @@ function isGitHubOAuthStartUrl(targetUrl: string): boolean {
 }
 
 async function createMainWindow(): Promise<BrowserWindow> {
-  const appUrl = await appServerController.resolveAppUrl();
+  const appUrl = await getAppServerController().resolveAppUrl();
   const window = new BrowserWindow({
     title: "Clanki",
     width: 1440,
@@ -122,7 +151,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 async function disposeControllers(): Promise<void> {
-  await Promise.allSettled([appServerController.stop(), desktopRunnerController.stop()]);
+  await Promise.allSettled([appServerController?.stop(), desktopRunnerController?.stop()]);
 }
 
 registerIpcHandlers();
