@@ -17,7 +17,6 @@ import {
   getDefaultRunnerModelSelection,
   getRunnerModelOptions,
   isRunnerModelSelectionAvailable,
-  selectionsMatch,
   useRunnerModels,
 } from "@/lib/runner-models";
 import {
@@ -167,14 +166,6 @@ export function TaskPage({
     };
   }, [isRunning]);
 
-  useEffect(() => {
-    if (selectionsMatch(selectedModel, activeModelSelection)) {
-      return;
-    }
-
-    setSelectedModel(activeModelSelection);
-  }, [activeModelSelection, selectedModel, setSelectedModel]);
-
   async function handleSend(contentOverride?: string) {
     const content = (contentOverride ?? input).trim();
     if (!content || sending || isRunning || !taskId) return;
@@ -186,9 +177,7 @@ export function TaskPage({
     shouldStickToBottomRef.current = true;
     setSending(true);
     setLocalError(null);
-    if (!selectionsMatch(selectedModel, activeModelSelection)) {
-      setSelectedModel(activeModelSelection);
-    }
+    setSelectedModel(activeModelSelection);
     setLastUsedModel(activeModelSelection);
     if (contentOverride === undefined) {
       setInput("");
