@@ -85,10 +85,34 @@ function createGitHubAppJwt(appId: string, privateKey: string): string {
   const signature = createSign("RSA-SHA256")
     .update(unsignedToken)
     .end()
-    .sign(privateKey, "base64url");
+    .sign(normalizePrivateKey(privateKey), "base64url");
   return `${unsignedToken}.${signature}`;
 }
 
 function encodeJwtPart(value: Record<string, number | string>): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function normalizePrivateKey(privateKey: string): string {
+  const trimmedKey = privateKey.trim();
+  if (trimmedKey.includes("\n")) {
+    return trimmedKey;
+  }
+
+  if (trimmedKey.includes("\\n")) {
+    return trimmedKey.replaceAll("\\n", "\n");
+  }
+
+  const beginMarker = "-----BEGIN PRIVATE KEY-----";
+  const endMarker = "-----END PRIVATE KEY-----";
+  if (!trimmedKey.startsWith(beginMarker) || !trimmedKey.endsWith(endMarker)) {
+    return trimmedKey;
+  }
+
+  const body = trimmedKey
+    .slice(beginMarker.length, trimmedKey.length - endMarker.length)
+    .replace(/\s+/g, "");
+  const lines = body.match(/.{1,64}/g) ?? [];
+
+  return [beginMarker, ...lines, endMarker].join("\n");
 }
