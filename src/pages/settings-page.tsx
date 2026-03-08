@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
 import { BookMarked, Loader2, Plus } from "lucide-react";
@@ -24,50 +24,22 @@ export function SettingsPage() {
   const activeOrganization = useOrganization();
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [projectSetupDrafts, setProjectSetupDrafts] = useState<Record<string, string>>({});
-  const [projectRunDrafts, setProjectRunDrafts] = useState<Record<string, string>>({});
-  const [projectRunPortDrafts, setProjectRunPortDrafts] = useState<Record<string, string>>({});
+  const [projectSetupEdits, setProjectSetupEdits] = useState<Record<string, string>>({});
+  const [projectRunEdits, setProjectRunEdits] = useState<Record<string, string>>({});
+  const [projectRunPortEdits, setProjectRunPortEdits] = useState<Record<string, string>>({});
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
   const [savingProjectRunId, setSavingProjectRunId] = useState<string | null>(null);
   const [projectSetupErrors, setProjectSetupErrors] = useState<Record<string, string>>({});
   const [projectRunErrors, setProjectRunErrors] = useState<Record<string, string>>({});
   const dialogOpen = manualDialogOpen || Boolean(addProject);
-  useEffect(() => {
-    setProjectSetupDrafts((previous) => {
-      const next: Record<string, string> = {};
-      for (const project of projects) {
-        next[project.id] = previous[project.id] ?? project.setup_command ?? "";
-      }
-      return next;
-    });
-
-    setProjectRunDrafts((previous) => {
-      const next: Record<string, string> = {};
-      for (const project of projects) {
-        next[project.id] = previous[project.id] ?? project.run_command ?? "";
-      }
-      return next;
-    });
-
-    setProjectRunPortDrafts((previous) => {
-      const next: Record<string, string> = {};
-      for (const project of projects) {
-        next[project.id] =
-          previous[project.id] ??
-          (project.run_port === null || project.run_port === undefined
-            ? ""
-            : String(project.run_port));
-      }
-      return next;
-    });
-  }, [projects]);
 
   async function handleSaveProjectSetupCommand(projectId: string) {
     if (savingProjectId) {
       return;
     }
 
-    const draftValue = projectSetupDrafts[projectId] ?? "";
+    const project = projects.find((p) => p.id === projectId);
+    const draftValue = projectSetupEdits[projectId] ?? project?.setup_command ?? "";
     const setupCommand = draftValue.trim().length > 0 ? draftValue.trim() : null;
 
     setSavingProjectId(projectId);
@@ -79,10 +51,11 @@ export function SettingsPage() {
 
     try {
       await updateProjectSetupCommand({ data: { projectId, setupCommand } });
-      setProjectSetupDrafts((previous) => ({
-        ...previous,
-        [projectId]: setupCommand ?? "",
-      }));
+      setProjectSetupEdits((previous) => {
+        const next = { ...previous };
+        delete next[projectId];
+        return next;
+      });
     } catch (error) {
       setProjectSetupErrors((previous) => ({
         ...previous,
@@ -99,8 +72,13 @@ export function SettingsPage() {
       return;
     }
 
-    const draftRunCommand = projectRunDrafts[projectId] ?? "";
-    const draftRunPort = projectRunPortDrafts[projectId] ?? "";
+    const project = projects.find((p) => p.id === projectId);
+    const draftRunCommand = projectRunEdits[projectId] ?? project?.run_command ?? "";
+    const draftRunPort =
+      projectRunPortEdits[projectId] ??
+      (project?.run_port === null || project?.run_port === undefined
+        ? ""
+        : String(project.run_port));
     const runCommand = draftRunCommand.trim().length > 0 ? draftRunCommand.trim() : null;
     const runPortInput = draftRunPort.trim();
     const runPort = runPortInput.length > 0 ? Number(runPortInput) : null;
@@ -130,14 +108,16 @@ export function SettingsPage() {
 
     try {
       await updateProjectRunCommand({ data: { projectId, runCommand, runPort } });
-      setProjectRunDrafts((previous) => ({
-        ...previous,
-        [projectId]: runCommand ?? "",
-      }));
-      setProjectRunPortDrafts((previous) => ({
-        ...previous,
-        [projectId]: runPort === null ? "" : String(runPort),
-      }));
+      setProjectRunEdits((previous) => {
+        const next = { ...previous };
+        delete next[projectId];
+        return next;
+      });
+      setProjectRunPortEdits((previous) => {
+        const next = { ...previous };
+        delete next[projectId];
+        return next;
+      });
     } catch (error) {
       setProjectRunErrors((previous) => ({
         ...previous,
@@ -214,9 +194,9 @@ export function SettingsPage() {
                         </p>
                         <div className="flex flex-col gap-2 md:flex-row">
                           <Input
-                            value={projectSetupDrafts[project.id] ?? project.setup_command ?? ""}
+                            value={projectSetupEdits[project.id] ?? project.setup_command ?? ""}
                             onChange={(event) =>
-                              setProjectSetupDrafts((previous) => ({
+                              setProjectSetupEdits((previous) => ({
                                 ...previous,
                                 [project.id]: event.target.value,
                               }))
@@ -229,7 +209,7 @@ export function SettingsPage() {
                             disabled={
                               savingProjectId !== null ||
                               (
-                                projectSetupDrafts[project.id] ??
+                                projectSetupEdits[project.id] ??
                                 project.setup_command ??
                                 ""
                               ).trim() === (project.setup_command ?? "")
@@ -254,9 +234,9 @@ export function SettingsPage() {
                         </p>
                         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
                           <Input
-                            value={projectRunDrafts[project.id] ?? project.run_command ?? ""}
+                            value={projectRunEdits[project.id] ?? project.run_command ?? ""}
                             onChange={(event) =>
-                              setProjectRunDrafts((previous) => ({
+                              setProjectRunEdits((previous) => ({
                                 ...previous,
                                 [project.id]: event.target.value,
                               }))
@@ -268,13 +248,13 @@ export function SettingsPage() {
                             min={1}
                             max={65535}
                             value={
-                              projectRunPortDrafts[project.id] ??
+                              projectRunPortEdits[project.id] ??
                               (project.run_port === null || project.run_port === undefined
                                 ? ""
                                 : String(project.run_port))
                             }
                             onChange={(event) =>
-                              setProjectRunPortDrafts((previous) => ({
+                              setProjectRunPortEdits((previous) => ({
                                 ...previous,
                                 [project.id]: event.target.value,
                               }))
@@ -286,13 +266,10 @@ export function SettingsPage() {
                             onClick={() => void handleSaveProjectRunCommand(project.id)}
                             disabled={
                               savingProjectRunId !== null ||
-                              ((
-                                projectRunDrafts[project.id] ??
-                                project.run_command ??
-                                ""
-                              ).trim() === (project.run_command ?? "") &&
+                              ((projectRunEdits[project.id] ?? project.run_command ?? "").trim() ===
+                                (project.run_command ?? "") &&
                                 (
-                                  projectRunPortDrafts[project.id] ??
+                                  projectRunPortEdits[project.id] ??
                                   (project.run_port === null || project.run_port === undefined
                                     ? ""
                                     : String(project.run_port))
