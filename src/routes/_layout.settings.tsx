@@ -3,16 +3,10 @@ import { projectsCollection } from "@/lib/collections";
 import { SettingsPage } from "@/pages/settings-page";
 
 export const Route = createFileRoute("/_layout/settings")({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { addProject?: boolean; installApp?: boolean } => {
+  validateSearch: (search: Record<string, unknown>): { addProject?: boolean } => {
     const addProject = search.addProject === "1" || search.addProject === true;
-    const installApp = search.installApp === "1" || search.installApp === true;
 
-    return {
-      ...(addProject ? { addProject: true } : {}),
-      ...(installApp ? { installApp: true } : {}),
-    };
+    return addProject ? { addProject: true } : {};
   },
   loader: () => {
     if (typeof window === "undefined") {
