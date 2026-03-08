@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { DesktopAppUpdaterToasts } from "@/components/desktop-app-updater-toasts";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { themeInitializationScript } from "@/lib/theme";
 import appCss from "@/index.css?url";
 
@@ -32,6 +34,8 @@ function RootDocument({ children }: { children: ReactNode }) {
       <body>
         <ThemeProvider>
           {children}
+          <DesktopAppUpdaterToasts />
+          <Toaster />
           <Scripts />
         </ThemeProvider>
       </body>
