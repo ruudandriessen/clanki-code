@@ -153,13 +153,6 @@ export function serializeRunnerModelSelection(
   return `${selection.provider}:${selection.model}`;
 }
 
-export function selectionsMatch(
-  left: DesktopRunnerModelSelection | null,
-  right: DesktopRunnerModelSelection | null,
-): boolean {
-  return left?.model === right?.model && left?.provider === right?.provider;
-}
-
 function toRunnerModelSelection(option: RunnerModelOption): DesktopRunnerModelSelection {
   return {
     model: option.model,
