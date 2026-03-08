@@ -2,13 +2,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { createAppServerController } from "./app-server.mjs";
+import { createAppUpdaterController } from "./app-updater.mjs";
 import { createDesktopRunnerController } from "./desktop-runner.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 let appServerController: ReturnType<typeof createAppServerController> | null = null;
 let desktopRunnerController: ReturnType<typeof createDesktopRunnerController> | null = null;
+const appUpdaterController = createAppUpdaterController();
 
 let isQuitting = false;
+let isInstallingUpdate = false;
 
 function resolveWorkspaceRoot(): string {
   if (app.isPackaged) {
@@ -59,6 +62,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle("desktop-runner:prompt-task", async (_event, args) => {
     return await getDesktopRunnerController().promptRunnerTask(args);
+  });
+
+  ipcMain.handle("app-updater:get-state", () => {
+    return appUpdaterController.getState();
+  });
+
+  ipcMain.handle("app-updater:quit-and-install", async () => {
+    isInstallingUpdate = true;
+    await disposeControllers();
+    appUpdaterController.quitAndInstall();
   });
 }
 
@@ -151,6 +164,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 async function disposeControllers(): Promise<void> {
+  appUpdaterController.stop();
   await Promise.allSettled([appServerController?.stop(), desktopRunnerController?.stop()]);
 }
 
@@ -159,6 +173,7 @@ registerIpcHandlers();
 app
   .whenReady()
   .then(async () => {
+    appUpdaterController.start();
     await createMainWindow();
 
     app.on("activate", async () => {
@@ -181,7 +196,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-  if (isQuitting) {
+  if (isQuitting || isInstallingUpdate) {
     return;
   }
 
