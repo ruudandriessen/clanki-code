@@ -15,7 +15,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout.index'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
-import { Route as LayoutInstallRouteImport } from './routes/_layout.install'
 import { Route as ApiTasksShapeRouteImport } from './routes/api/tasks/shape'
 import { Route as ApiPullRequestsShapeRouteImport } from './routes/api/pull-requests/shape'
 import { Route as ApiProjectsShapeRouteImport } from './routes/api/projects/shape'
@@ -57,11 +56,6 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutInstallRoute = LayoutInstallRouteImport.update({
-  id: '/install',
-  path: '/install',
   getParentRoute: () => LayoutRoute,
 } as any)
 const ApiTasksShapeRoute = ApiTasksShapeRouteImport.update({
@@ -141,7 +135,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/pending-access': typeof PendingAccessRoute
   '/webhook': typeof WebhookRoute
-  '/install': typeof LayoutInstallRoute
   '/settings': typeof LayoutSettingsRoute
   '/tasks/$taskId': typeof LayoutTasksTaskIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -161,7 +154,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/pending-access': typeof PendingAccessRoute
   '/webhook': typeof WebhookRoute
-  '/install': typeof LayoutInstallRoute
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
   '/tasks/$taskId': typeof LayoutTasksTaskIdRoute
@@ -184,7 +176,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/pending-access': typeof PendingAccessRoute
   '/webhook': typeof WebhookRoute
-  '/_layout/install': typeof LayoutInstallRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/tasks/$taskId': typeof LayoutTasksTaskIdRoute
@@ -208,7 +199,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/pending-access'
     | '/webhook'
-    | '/install'
     | '/settings'
     | '/tasks/$taskId'
     | '/api/auth/$'
@@ -228,7 +218,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/pending-access'
     | '/webhook'
-    | '/install'
     | '/settings'
     | '/'
     | '/tasks/$taskId'
@@ -250,7 +239,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/pending-access'
     | '/webhook'
-    | '/_layout/install'
     | '/_layout/settings'
     | '/_layout/'
     | '/_layout/tasks/$taskId'
@@ -329,13 +317,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/install': {
-      id: '/_layout/install'
-      path: '/install'
-      fullPath: '/install'
-      preLoaderRoute: typeof LayoutInstallRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/api/tasks/shape': {
@@ -433,14 +414,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface LayoutRouteChildren {
-  LayoutInstallRoute: typeof LayoutInstallRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutTasksTaskIdRoute: typeof LayoutTasksTaskIdRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
-  LayoutInstallRoute: LayoutInstallRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutTasksTaskIdRoute: LayoutTasksTaskIdRoute,
