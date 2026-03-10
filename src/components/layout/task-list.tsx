@@ -27,6 +27,9 @@ import {
   TASK_SIDEBAR_GROUPS,
   type TaskSidebarGroup,
 } from "@/lib/task-sidebar";
+import type { Task } from "@/lib/collections";
+
+type TaskDeleteTarget = Pick<Task, "id" | "runner_type" | "title" | "workspace_path">;
 
 function renderGroupIcon(group: TaskSidebarGroup) {
   switch (group) {
@@ -56,7 +59,7 @@ export function TaskList() {
 
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [deletingTask, setDeletingTask] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<TaskDeleteTarget | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const isSidebarLoading = isTasksLoading || isPullRequestsLoading;
 
@@ -77,7 +80,7 @@ export function TaskList() {
     }
   }
 
-  async function handleDeleteTask(task?: { id: string }) {
+  async function handleDeleteTask(task?: TaskDeleteTarget) {
     const targetTask = task ?? taskToDelete;
 
     if (!targetTask || deletingTask) {
@@ -85,14 +88,13 @@ export function TaskList() {
     }
 
     const deletingTaskId = targetTask.id;
-    const taskRecord = tasks.find((candidateTask) => candidateTask.id === deletingTaskId);
-    const workspacePath = taskRecord?.workspace_path?.trim();
+    const workspacePath = targetTask.workspace_path?.trim();
 
     setDeletingTask(true);
     setDeleteError(null);
 
     try {
-      if (taskRecord?.runner_type === "local-worktree" && workspacePath) {
+      if (targetTask.runner_type === "local-worktree" && workspacePath) {
         await deleteDesktopRunnerWorkspace(workspacePath);
       }
 
@@ -191,11 +193,11 @@ export function TaskList() {
                           )}
                           onClick={() => {
                             if (shouldSkipDeleteConfirmation) {
-                              void handleDeleteTask({ id: task.id });
+                              void handleDeleteTask(task);
                               return;
                             }
 
-                            setTaskToDelete({ id: task.id, title: taskLabel });
+                            setTaskToDelete({ ...task, title: taskLabel });
                             setDeleteError(null);
                           }}
                           title={`Delete ${taskLabel}`}
