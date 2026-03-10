@@ -120,6 +120,7 @@ export function TaskList() {
           variant="ghost"
           size="icon-xs"
           iconOnly
+          hotkeyEnabled
           className="text-muted-foreground shadow-none hover:border-transparent hover:shadow-none"
         />
       </div>
