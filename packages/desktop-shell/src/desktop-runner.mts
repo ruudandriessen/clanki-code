@@ -155,15 +155,7 @@ export function createDesktopRunnerController({
     directory: string;
     sessionId: string;
   }): Promise<RunnerDiff[]> {
-    const runner = await ensureRunner();
-    const payload = await getRunnerJson<GetRunnerDiffResponse>(
-      `${runner.baseUrl}/assistant/session/diff?${new URLSearchParams({
-        directory: args.directory,
-        sessionId: args.sessionId,
-      }).toString()}`,
-    );
-
-    return payload.diffs;
+    return await requestRunnerDiff(args);
   }
 
   async function promptRunnerTask(args: PromptRunnerTaskArgs): Promise<void> {
@@ -290,6 +282,21 @@ export function createDesktopRunnerController({
 
     runnerProcess = nextRunnerProcess;
     return nextRunnerProcess;
+  }
+
+  async function requestRunnerDiff(args: {
+    directory: string;
+    sessionId: string;
+  }): Promise<RunnerDiff[]> {
+    const runner = await ensureRunner();
+    const payload = await getRunnerJson<GetRunnerDiffResponse>(
+      `${runner.baseUrl}/assistant/session/diff?${new URLSearchParams({
+        directory: args.directory,
+        sessionId: args.sessionId,
+      }).toString()}`,
+    );
+
+    return payload.diffs;
   }
 
   return {
