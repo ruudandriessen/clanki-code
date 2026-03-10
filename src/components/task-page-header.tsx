@@ -1,6 +1,9 @@
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { ExternalLink } from "lucide-react";
 import { OpenEditorDropdown } from "@/components/open-editor-dropdown";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { hotkeys } from "@/lib/hotkeys";
 import {
   formatChecksProgress,
   getChecksStatusClasses,
@@ -46,6 +49,9 @@ export function TaskPageHeader({
   onError,
   onCreatePr,
 }: TaskPageHeaderProps) {
+  const canCreatePr = !!branchName && !pullRequest && !sending && !isRunning;
+  useHotkey(hotkeys.createPr.keys, () => onCreatePr(), { enabled: canCreatePr });
+
   return (
     <div className="shrink-0 border-b border-border bg-card px-4 py-3 md:px-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -124,6 +130,7 @@ export function TaskPageHeader({
                 onClick={onCreatePr}
               >
                 Create a PR
+                <Kbd keys={hotkeys.createPr.keys} />
               </Button>
             </div>
           ) : null}

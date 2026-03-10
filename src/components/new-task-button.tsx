@@ -1,10 +1,14 @@
 import { useState, type ComponentProps } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { projectsCollection, tasksCollection } from "@/lib/collections";
 import { createDesktopRunnerSession } from "@/lib/desktop-runner";
+import { hotkeys } from "@/lib/hotkeys";
 
 type ButtonProps = ComponentProps<typeof Button>;
 
@@ -12,7 +16,7 @@ type NewTaskButtonProps = Omit<ButtonProps, "children" | "disabled" | "onClick">
   iconOnly?: boolean;
 };
 
-export function NewTaskButton({ iconOnly = false, title, ...props }: NewTaskButtonProps) {
+export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const { data: projects } = useLiveQuery((query) =>
@@ -20,6 +24,8 @@ export function NewTaskButton({ iconOnly = false, title, ...props }: NewTaskButt
   );
 
   const [defaultProject] = projects;
+
+  useHotkey(hotkeys.newTask.keys, () => handleNewTask());
 
   function handleNewTask() {
     const repoUrl = defaultProject?.repo_url;
@@ -66,20 +72,42 @@ export function NewTaskButton({ iconOnly = false, title, ...props }: NewTaskButt
       });
   }
 
-  return (
+  const icon = creating ? (
+    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+  ) : (
+    <Plus className="w-3.5 h-3.5" />
+  );
+
+  const button = (
     <Button
       type="button"
-      title={title ?? "New task"}
       disabled={creating || !defaultProject}
       onClick={() => handleNewTask()}
       {...props}
     >
-      {creating ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-      ) : (
-        <Plus className="w-3.5 h-3.5" />
+      {icon}
+      {iconOnly ? null : (
+        <>
+          <span>New task</span>
+          <Kbd keys={hotkeys.newTask.keys} />
+        </>
       )}
-      {iconOnly ? null : <span>New task</span>}
     </Button>
   );
+
+  if (iconOnly) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>
+          <span className="flex items-center gap-2">
+            {hotkeys.newTask.label}
+            <Kbd keys={hotkeys.newTask.keys} />
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return button;
 }

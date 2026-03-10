@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { themeInitializationScript } from "@/lib/theme";
 import appCss from "@/index.css?url";
 
@@ -31,7 +33,9 @@ function RootDocument({ children }: { children: ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          {children}
+          <HotkeysProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </HotkeysProvider>
           <Scripts />
         </ThemeProvider>
       </body>
