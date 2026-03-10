@@ -40,6 +40,7 @@ export const createTask = createServerFn({ method: "POST" })
       projectId: z.string(),
       runnerSessionId: z.string().optional(),
       runnerType: z.string().optional(),
+      setupStatus: z.string().optional(),
       status: z.string().optional(),
       workspacePath: z.string().optional(),
       createdAt: z.number().optional(),
@@ -78,6 +79,10 @@ export const createTask = createServerFn({ method: "POST" })
         typeof input.status === "string" && input.status.trim().length > 0
           ? input.status.trim()
           : "open";
+      const setupStatus =
+        typeof input.setupStatus === "string" && input.setupStatus.trim().length > 0
+          ? input.setupStatus.trim()
+          : "ready";
       const taskId = parseOptionalId(input.id) ?? crypto.randomUUID();
 
       const streamId = await createStream({
@@ -92,6 +97,7 @@ export const createTask = createServerFn({ method: "POST" })
         projectId: input.projectId,
         title: input.title.trim(),
         status,
+        setupStatus,
         runnerSessionId: parseOptionalId(input.runnerSessionId) ?? null,
         runnerType:
           typeof input.runnerType === "string" && input.runnerType.trim().length > 0
@@ -121,6 +127,7 @@ export const updateTask = createServerFn({ method: "POST" })
       title: z.string().optional(),
       runnerSessionId: z.string().nullable().optional(),
       runnerType: z.string().nullable().optional(),
+      setupStatus: z.string().optional(),
       workspacePath: z.string().nullable().optional(),
       error: z.string().nullable().optional(),
     }),

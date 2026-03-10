@@ -12,10 +12,11 @@ import {
   type ListOpencodeModelsRequest,
   type PromptAssistantSessionRequest,
   type PromptTaskAssistantSessionRequest,
+  type RunWorkspaceSetupRequest,
 } from "./local-runner-protocol";
 import { listOpencodeModels } from "./opencode-models";
 import { promptTaskAssistantSession } from "./task-assistant-session";
-import { createWorkspace, deleteWorkspace } from "./workspace";
+import { createWorkspace, deleteWorkspace, runWorkspaceSetup } from "./workspace";
 
 export type LocalRunnerServerOptions = {
   host?: string;
@@ -120,6 +121,14 @@ export function createLocalRunnerApp(): Hono {
     const body = await readJson<DeleteWorkspaceRequest>(c);
 
     deleteWorkspace(body.workspaceDirectory);
+
+    return c.json({ ok: true });
+  });
+
+  app.post("/workspace/setup", async (c) => {
+    const body = await readJson<RunWorkspaceSetupRequest>(c);
+
+    runWorkspaceSetup(body);
 
     return c.json({ ok: true });
   });

@@ -13,6 +13,8 @@ import type {
   LocalRunnerInfoResponse,
   PromptAssistantSessionRequest,
   PromptAssistantSessionResponse,
+  RunWorkspaceSetupRequest,
+  RunWorkspaceSetupResponse,
 } from "./local-runner-protocol";
 
 export function createLocalRunnerClient(baseUrl: string) {
@@ -60,6 +62,9 @@ export function createLocalRunnerClient(baseUrl: string) {
       body: PromptAssistantSessionRequest,
     ): Promise<PromptAssistantSessionResponse> {
       return await postJson(`${normalizedBaseUrl}/assistant/session/prompt`, body);
+    },
+    async runWorkspaceSetup(body: RunWorkspaceSetupRequest): Promise<RunWorkspaceSetupResponse> {
+      return await postJson(`${normalizedBaseUrl}/workspace/setup`, body);
     },
   };
 }

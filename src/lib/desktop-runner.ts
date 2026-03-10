@@ -44,6 +44,7 @@ type DesktopRunnerBridge = {
     provider?: string;
     sessionId: string;
   }) => Promise<void>;
+  runWorkspaceSetup: (args: { setupCommand: string; workspaceDirectory: string }) => Promise<void>;
 };
 
 declare global {
@@ -95,4 +96,11 @@ export async function promptDesktopRunnerTask(args: {
   sessionId: string;
 }): Promise<void> {
   await getDesktopRunnerBridge().promptRunnerTask(args);
+}
+
+export async function runDesktopWorkspaceSetup(args: {
+  setupCommand: string;
+  workspaceDirectory: string;
+}): Promise<void> {
+  await getDesktopRunnerBridge().runWorkspaceSetup(args);
 }

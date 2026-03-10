@@ -233,6 +233,7 @@ export const tasks = pgTable(
     projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     status: text("status").notNull().default("open"),
+    setupStatus: text("setup_status").notNull().default("ready"),
     branch: text("branch"),
     runnerType: text("runner_type"),
     runnerSessionId: text("runner_session_id"),

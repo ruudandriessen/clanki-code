@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { projectsCollection, tasksCollection } from "@/lib/collections";
-import { createDesktopRunnerSession } from "@/lib/desktop-runner";
+import { createDesktopRunnerSession, runDesktopWorkspaceSetup } from "@/lib/desktop-runner";
 import { hotkeys } from "@/lib/hotkeys";
 
 type ButtonProps = ComponentProps<typeof Button>;
@@ -29,6 +29,7 @@ export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps
 
   function handleNewTask() {
     const repoUrl = defaultProject?.repo_url;
+    const setupCommand = defaultProject?.setup_command?.trim() ?? "";
     if (creating || !defaultProject || !repoUrl) {
       return;
     }
@@ -44,6 +45,7 @@ export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps
       project_id: defaultProject.id,
       title: taskTitle,
       status: "open",
+      setup_status: "worktree-setup",
       stream_id: null,
       branch: null,
       runner_type: null,
@@ -58,11 +60,25 @@ export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps
     setCreating(false);
 
     createDesktopRunnerSession(taskTitle, repoUrl)
-      .then((response) => {
+      .then(async (response) => {
         tasksCollection.update(taskId, (draft) => {
           draft.runner_type = response.runnerType;
           draft.runner_session_id = response.sessionId;
           draft.workspace_path = response.workspaceDirectory;
+          draft.setup_status = setupCommand.length > 0 ? "installing" : "ready";
+        });
+
+        if (setupCommand.length === 0) {
+          return;
+        }
+
+        await runDesktopWorkspaceSetup({
+          setupCommand,
+          workspaceDirectory: response.workspaceDirectory,
+        });
+
+        tasksCollection.update(taskId, (draft) => {
+          draft.setup_status = "ready";
         });
       })
       .catch((err) => {

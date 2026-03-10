@@ -59,9 +59,11 @@ export function TaskPageInput({
           placeholder={
             isReadOnlyRemoteTask
               ? "This runner-backed task is read-only on this device."
-              : isRunning
-                ? "Wait for the current run to finish..."
-                : "Send a message..."
+              : preparingWorkspace
+                ? "Wait for workspace setup to finish..."
+                : isRunning
+                  ? "Wait for the current run to finish..."
+                  : "Send a message..."
           }
           rows={4}
           disabled={isRunning || isReadOnlyRemoteTask || sending}

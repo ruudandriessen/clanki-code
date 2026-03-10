@@ -50,6 +50,7 @@ export interface TaskPageProps {
   title: string;
   error: string | null;
   isRunning: boolean;
+  setupStatus: string;
   runnerSessionId: string | null;
   runnerType: string | null;
   workspacePath: string | null;
@@ -64,6 +65,7 @@ export function TaskPage({
   pullRequest,
   error,
   isRunning,
+  setupStatus,
   runnerSessionId,
   runnerType,
   workspacePath,
@@ -113,6 +115,7 @@ export function TaskPage({
   const isRunnerBackedTask =
     runnerType === "local-worktree" && !!runnerSessionId && !!workspacePath;
   const willBeRunnerBacked = desktopApp && (!runnerType || isRunnerBackedTask);
+  const setupStatusLabel = getSetupStatusLabel(setupStatus);
   const isReadOnlyRemoteTask = isRunnerBackedTask && !desktopApp;
   const {
     data: runnerModels,
@@ -131,6 +134,8 @@ export function TaskPage({
   const runnerModelErrorMessage =
     runnerModelsError instanceof Error ? runnerModelsError.message : null;
   const displayError = localError ?? error;
+  const preparingWorkspace =
+    willBeRunnerBacked && !displayError && (!isRunnerBackedTask || setupStatus !== "ready");
 
   useEffect(() => {
     if (!shouldStickToBottomRef.current) {
@@ -283,6 +288,15 @@ export function TaskPage({
         </div>
       ) : null}
 
+      {preparingWorkspace ? (
+        <div className="shrink-0 border-b border-border bg-muted/40 px-4 py-2.5 md:px-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Workspace status: {setupStatusLabel}</span>
+          </div>
+        </div>
+      ) : null}
+
       <TaskPageMessageList
         messageListRef={messageListRef}
         messagesEndRef={messagesEndRef}
@@ -301,7 +315,7 @@ export function TaskPage({
         isRunning={isRunning}
         isReadOnlyRemoteTask={isReadOnlyRemoteTask}
         sending={sending}
-        preparingWorkspace={willBeRunnerBacked && !isRunnerBackedTask}
+        preparingWorkspace={preparingWorkspace}
         isRunnerBackedTask={isRunnerBackedTask}
         willBeRunnerBacked={willBeRunnerBacked}
         activeModelSelection={activeModelSelection}
@@ -315,4 +329,15 @@ export function TaskPage({
       />
     </div>
   );
+}
+
+function getSetupStatusLabel(setupStatus: string): string {
+  switch (setupStatus) {
+    case "worktree-setup":
+      return "Setting up worktree";
+    case "installing":
+      return "Running project setup";
+    default:
+      return "Ready";
+  }
 }

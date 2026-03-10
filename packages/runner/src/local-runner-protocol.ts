@@ -38,6 +38,15 @@ export type CreateAssistantSessionResponse = {
   workspaceDirectory: string;
 };
 
+export type RunWorkspaceSetupRequest = {
+  setupCommand: string;
+  workspaceDirectory: string;
+};
+
+export type RunWorkspaceSetupResponse = {
+  ok: true;
+};
+
 export type EnsureAssistantSessionRequest = {
   directory: string;
   model?: string;

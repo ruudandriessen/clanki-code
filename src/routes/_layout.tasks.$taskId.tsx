@@ -82,6 +82,7 @@ export const Route = createFileRoute("/_layout/tasks/$taskId")({
         }
         error={openedTask?.task.error ?? null}
         isRunning={(openedTask?.task.status ?? "") === "running"}
+        setupStatus={openedTask?.task.setup_status ?? "ready"}
         runnerSessionId={openedTask?.task.runner_session_id ?? null}
         runnerType={openedTask?.task.runner_type ?? null}
         workspacePath={openedTask?.task.workspace_path ?? null}

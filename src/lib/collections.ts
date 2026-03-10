@@ -24,6 +24,7 @@ const taskSchema = z.object({
   project_id: z.string().nullable(),
   title: z.string(),
   status: z.string(),
+  setup_status: z.string(),
   runner_type: z.string().nullable(),
   runner_session_id: z.string().nullable(),
   stream_id: z.string().nullable(),
@@ -78,6 +79,7 @@ function txidsToMatch(txids: Array<number>) {
 
 const taskFieldMap: Record<string, keyof Partial<Task>> = {
   title: "title",
+  setupStatus: "setup_status",
   runnerType: "runner_type",
   runnerSessionId: "runner_session_id",
   workspacePath: "workspace_path",
@@ -155,6 +157,7 @@ function createCollections(baseUrl: string) {
               projectId: task.project_id,
               runnerSessionId: task.runner_session_id ?? undefined,
               runnerType: task.runner_type ?? undefined,
+              setupStatus: task.setup_status,
               status: task.status,
               workspacePath: task.workspace_path ?? undefined,
               createdAt: Number(task.created_at),

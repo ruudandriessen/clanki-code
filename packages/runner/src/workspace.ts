@@ -47,6 +47,28 @@ export function deleteWorkspace(workspaceDirectory: string): void {
   );
 }
 
+export function runWorkspaceSetup(args: {
+  setupCommand: string;
+  workspaceDirectory: string;
+}): void {
+  const managedWorkspaceDirectory = resolveManagedWorkspaceDirectory(args.workspaceDirectory);
+  const setupCommand = args.setupCommand.trim();
+
+  if (setupCommand.length === 0) {
+    return;
+  }
+
+  if (!fs.existsSync(managedWorkspaceDirectory)) {
+    throw new Error(`Workspace does not exist: ${args.workspaceDirectory}`);
+  }
+
+  runShellCommand(
+    setupCommand,
+    managedWorkspaceDirectory,
+    `Failed to run workspace setup in ${managedWorkspaceDirectory}`,
+  );
+}
+
 function prepareSessionWorktree(repoUrl: string, title: string): PreparedWorkspace {
   const workspace = resolveRepoWorkspacePaths(repoUrl);
   const defaultBranch = ensureDefaultCheckout(repoUrl, workspace);
@@ -268,4 +290,34 @@ function runCommand(program: string, args: string[], errorContext?: string): str
   }
 
   throw new Error(`Command ${program} failed: ${details}`);
+}
+
+function runShellCommand(command: string, cwd: string, errorContext?: string): string {
+  const output = spawnSync(command, {
+    cwd,
+    encoding: "utf8",
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (output.error) {
+    const message = errorContext
+      ? `${errorContext}: ${output.error.message}`
+      : `Failed to run command: ${output.error.message}`;
+    throw new Error(message);
+  }
+
+  if (output.status === 0) {
+    return output.stdout;
+  }
+
+  const stderr = output.stderr.trim();
+  const stdout = output.stdout.trim();
+  const details = stderr || stdout || `exit status ${output.status}`;
+
+  if (errorContext) {
+    throw new Error(`${errorContext}: ${details}`);
+  }
+
+  throw new Error(`Command failed: ${details}`);
 }
