@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
   CheckCheck,
   CircleAlert,
@@ -27,6 +28,9 @@ import {
   TASK_SIDEBAR_GROUPS,
   type TaskSidebarGroup,
 } from "@/lib/task-sidebar";
+
+const SIDEBAR_LAYOUT_EASE = [0.2, 0.8, 0.2, 1] as const;
+const SIDEBAR_ENTER_EASE = [0.16, 1, 0.3, 1] as const;
 
 function renderGroupIcon(group: TaskSidebarGroup) {
   switch (group) {
@@ -55,6 +59,7 @@ export function TaskList() {
   );
 
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const shouldReduceMotion = useReducedMotion();
   const [deletingTask, setDeletingTask] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -119,102 +124,138 @@ export function TaskList() {
         />
       </div>
 
-      <nav className="neo-scroll flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-2 pb-24 md:pb-2">
-        {visibleGroups.map((group) => {
-          const tasksInGroup = groupedTasks[group.key];
+      <LayoutGroup>
+        <nav className="neo-scroll flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-2 pb-24 md:pb-2">
+          <AnimatePresence initial={false} mode="popLayout">
+            {visibleGroups.map((group) => {
+              const tasksInGroup = groupedTasks[group.key];
 
-          return (
-            <div key={group.key} className="space-y-1">
-              <p className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-muted-foreground/90 uppercase tracking-[0.08em]">
-                {renderGroupIcon(group.key)}
-                <span>{group.label}</span>
-              </p>
-              {isSidebarLoading
-                ? Array.from({ length: 2 }).map((_, index) => (
-                    <div
-                      key={`${group.key}-skeleton-${index}`}
-                      className="mx-2.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2"
-                    >
-                      <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded-sm bg-muted" />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="h-3 w-3/4 animate-pulse rounded-sm bg-muted" />
-                        <div className="h-2.5 w-1/2 animate-pulse rounded-sm bg-muted/80" />
-                      </div>
-                    </div>
-                  ))
-                : tasksInGroup.map((task) => {
-                    const isActive = pathname === `/tasks/${task.id}`;
-                    const projectName = task.project_id
-                      ? projectsById.get(task.project_id)?.name
-                      : null;
-                    const taskLabel = task.branch ?? task.title;
-                    const secondaryLabel = projectName ?? null;
-
-                    const shouldSkipDeleteConfirmation = group.key === "merged";
-
-                    return (
+              return (
+                <motion.div
+                  key={group.key}
+                  layout
+                  className="space-y-1"
+                  initial={shouldReduceMotion ? false : { opacity: 0, x: -14, y: 10 }}
+                  animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0, y: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: -10, y: -8 }}
+                  transition={{
+                    layout: { duration: 0.24, ease: SIDEBAR_LAYOUT_EASE },
+                    duration: 0.26,
+                    ease: SIDEBAR_ENTER_EASE,
+                  }}
+                >
+                  <motion.p
+                    layout="position"
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-muted-foreground/90 uppercase tracking-[0.08em]"
+                    transition={{ layout: { duration: 0.22, ease: SIDEBAR_LAYOUT_EASE } }}
+                  >
+                    {renderGroupIcon(group.key)}
+                    <span>{group.label}</span>
+                  </motion.p>
+                  {isSidebarLoading ? (
+                    Array.from({ length: 2 }).map((_, index) => (
                       <div
-                        key={task.id}
-                        className={cn(
-                          "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-[var(--radius-sm)] pr-1 transition-colors",
-                          isActive
-                            ? "bg-accent/70 text-accent-foreground"
-                            : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
-                        )}
+                        key={`${group.key}-skeleton-${index}`}
+                        className="mx-2.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2"
                       >
-                        <Link
-                          to="/tasks/$taskId"
-                          params={{ taskId: task.id }}
-                          className="min-w-0 px-2.5 py-2 text-sm"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate">{taskLabel}</p>
-                            {secondaryLabel ? (
-                              <p
-                                className={cn(
-                                  "truncate text-[11px]",
-                                  isActive ? "text-accent-foreground/80" : "text-muted-foreground",
-                                )}
-                              >
-                                {secondaryLabel}
-                              </p>
-                            ) : null}
-                          </div>
-                        </Link>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          className={cn(
-                            "shrink-0 text-muted-foreground shadow-none hover:border-transparent hover:text-destructive hover:shadow-none",
-                            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                          )}
-                          onClick={() => {
-                            if (shouldSkipDeleteConfirmation) {
-                              void handleDeleteTask({ id: task.id });
-                              return;
-                            }
-
-                            setTaskToDelete({ id: task.id, title: taskLabel });
-                            setDeleteError(null);
-                          }}
-                          title={`Delete ${taskLabel}`}
-                          disabled={deletingTask}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded-sm bg-muted" />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="h-3 w-3/4 animate-pulse rounded-sm bg-muted" />
+                          <div className="h-2.5 w-1/2 animate-pulse rounded-sm bg-muted/80" />
+                        </div>
                       </div>
-                    );
-                  })}
+                    ))
+                  ) : (
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {tasksInGroup.map((task) => {
+                        const isActive = pathname === `/tasks/${task.id}`;
+                        const projectName = task.project_id
+                          ? projectsById.get(task.project_id)?.name
+                          : null;
+                        const taskLabel = task.branch ?? task.title;
+                        const secondaryLabel = projectName ?? null;
+
+                        const shouldSkipDeleteConfirmation = group.key === "merged";
+
+                        return (
+                          <motion.div
+                            key={task.id}
+                            layout
+                            layoutId={task.id}
+                            className={cn(
+                              "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-[var(--radius-sm)] pr-1 transition-colors",
+                              isActive
+                                ? "bg-accent/70 text-accent-foreground"
+                                : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
+                            )}
+                            initial={shouldReduceMotion ? false : { opacity: 0, x: -12, y: 8 }}
+                            animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0, y: 0 }}
+                            exit={shouldReduceMotion ? undefined : { opacity: 0, x: 12, y: -6 }}
+                            transition={{
+                              layout: { duration: 0.24, ease: SIDEBAR_LAYOUT_EASE },
+                              duration: 0.22,
+                              ease: SIDEBAR_ENTER_EASE,
+                            }}
+                          >
+                            <Link
+                              to="/tasks/$taskId"
+                              params={{ taskId: task.id }}
+                              className="min-w-0 px-2.5 py-2 text-sm"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate">{taskLabel}</p>
+                                {secondaryLabel ? (
+                                  <p
+                                    className={cn(
+                                      "truncate text-[11px]",
+                                      isActive
+                                        ? "text-accent-foreground/80"
+                                        : "text-muted-foreground",
+                                    )}
+                                  >
+                                    {secondaryLabel}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </Link>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              className={cn(
+                                "shrink-0 text-muted-foreground shadow-none hover:border-transparent hover:text-destructive hover:shadow-none",
+                                isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                              )}
+                              onClick={() => {
+                                if (shouldSkipDeleteConfirmation) {
+                                  void handleDeleteTask({ id: task.id });
+                                  return;
+                                }
+
+                                setTaskToDelete({ id: task.id, title: taskLabel });
+                                setDeleteError(null);
+                              }}
+                              title={`Delete ${taskLabel}`}
+                              disabled={deletingTask}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          {!isSidebarLoading && tasks.length === 0 ? (
+            <div className="px-2 py-3 text-center">
+              <p className="text-xs text-muted-foreground">No tasks yet</p>
             </div>
-          );
-        })}
-        {!isSidebarLoading && tasks.length === 0 ? (
-          <div className="px-2 py-3 text-center">
-            <p className="text-xs text-muted-foreground">No tasks yet</p>
-          </div>
-        ) : null}
-      </nav>
+          ) : null}
+        </nav>
+      </LayoutGroup>
 
       <Dialog open={taskToDelete !== null} onOpenChange={handleDeleteDialogOpenChange}>
         <DialogContent className="max-w-md" showCloseButton={!deletingTask}>
