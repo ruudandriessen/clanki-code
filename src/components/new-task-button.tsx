@@ -14,9 +14,14 @@ type ButtonProps = ComponentProps<typeof Button>;
 
 type NewTaskButtonProps = Omit<ButtonProps, "children" | "disabled" | "onClick"> & {
   iconOnly?: boolean;
+  hotkeyEnabled?: boolean;
 };
 
-export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps) {
+export function NewTaskButton({
+  iconOnly = false,
+  hotkeyEnabled = false,
+  ...props
+}: NewTaskButtonProps) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const { data: projects } = useLiveQuery((query) =>
@@ -25,7 +30,7 @@ export function NewTaskButton({ iconOnly = false, ...props }: NewTaskButtonProps
 
   const [defaultProject] = projects;
 
-  useHotkey(hotkeys.newTask.keys, () => handleNewTask());
+  useHotkey(hotkeys.newTask.keys, () => handleNewTask(), { enabled: hotkeyEnabled });
 
   function handleNewTask() {
     const repoUrl = defaultProject?.repo_url;
